@@ -426,6 +426,10 @@ input {
   }
 }
 
+.modal-wide {
+  max-width: 520px;
+}
+
 .modal-text {
   margin: 0;
 }
@@ -434,4 +438,45 @@ input {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* GIF picker */
+
+.gif-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.gif-picker-item {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg);
+
+  img {
+    display: block;
+    width: 100%;
+    height: 96px;
+    object-fit: cover;
+  }
+
+  &:hover {
+    border-color: var(--accent);
+  }
+}
+
+.gif-picker-status {
+  text-align: center;
+  color: var(--text);
+}
+
+.gif-picker-credit {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text);
+  text-align: center;
 }

@@ -7,6 +7,9 @@ import {
   uploadFile,
 } from '../api/uploads'
 import { formatBytes } from '../utils/format'
+import GifPicker from './GifPicker'
+import type { GiphyGif } from '../api/giphy'
+import type { Attachment } from '../types'
 
 type MessageFormProps = {
   channelId: number
@@ -17,6 +20,7 @@ function MessageForm({ channelId, username }: MessageFormProps) {
   const [body, setBody] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const setError = useChatStore((state) => state.setError)
 
@@ -55,6 +59,22 @@ function MessageForm({ channelId, username }: MessageFormProps) {
     }
   }
 
+  const handleGifSelect = async (gif: GiphyGif) => {
+    setPickerOpen(false)
+    const attachment: Attachment = {
+      name: gif.title || 'GIF',
+      mime: 'image/gif',
+      size: Number(gif.images.downsized.size ?? 0),
+      url: gif.images.downsized.url,
+    }
+    try {
+      await emitNewMessage('', channelId, username, attachment)
+      setBody('')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Не удалось отправить сообщение')
+    }
+  }
+
   return (
     <form className="message-form" onSubmit={handleSubmit}>
       <div className="message-form-row">
@@ -68,6 +88,15 @@ function MessageForm({ channelId, username }: MessageFormProps) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
           </svg>
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          title="Отправить GIF"
+          disabled={uploading}
+          onClick={() => setPickerOpen(true)}
+        >
+          GIF
         </button>
         <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.txt,.md,.json,.csv,.pdf,image/*,text/*,application/json,application/pdf" onChange={handleFileChange} hidden />
         <input
@@ -90,6 +119,9 @@ function MessageForm({ channelId, username }: MessageFormProps) {
             </button>
           )}
         </div>
+      )}
+      {pickerOpen && (
+        <GifPicker onSelect={handleGifSelect} onClose={() => setPickerOpen(false)} />
       )}
     </form>
   )
