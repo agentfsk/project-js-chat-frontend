@@ -5,16 +5,20 @@ export type AuthResponse = {
   username: string
 }
 
-export function login(username: string, password: string): Promise<AuthResponse> {
+export function login(identifier: string, password: string): Promise<AuthResponse> {
   return apiRequest<AuthResponse>('/api/v1/login', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ identifier, password }),
   })
 }
 
-export function signup(username: string, password: string): Promise<AuthResponse> {
+export function signup(
+  email: string,
+  username: string,
+  password: string,
+): Promise<AuthResponse> {
   return apiRequest<AuthResponse>('/api/v1/signup', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email, username, password }),
   })
 }

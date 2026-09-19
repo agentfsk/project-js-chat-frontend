@@ -31,7 +31,16 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   }
 
   if (!response.ok) {
-    throw new ApiError(response.status, `Ошибка запроса (${response.status})`)
+    let message = `Ошибка запроса (${response.status})`
+    try {
+      const body = (await response.json()) as { error?: unknown } | null
+      if (body && typeof body.error === 'string') {
+        message = body.error
+      }
+    } catch {
+      // non-JSON body: keep the fallback message
+    }
+    throw new ApiError(response.status, message)
   }
 
   return (await response.json()) as T
