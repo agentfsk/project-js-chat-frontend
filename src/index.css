@@ -58,7 +58,8 @@ button {
   }
 }
 
-input {
+input,
+textarea {
   font: inherit;
   padding: 8px 12px;
   border-radius: 8px;
@@ -304,6 +305,7 @@ input {
 .message-body {
   color: var(--text-h);
   word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .message-attachment-image {
@@ -360,8 +362,11 @@ input {
   display: flex;
   gap: 8px;
 
-  input[type='text'] {
+  textarea {
     flex: 1;
+    resize: none;
+    max-height: 200px;
+    line-height: inherit;
   }
 }
 

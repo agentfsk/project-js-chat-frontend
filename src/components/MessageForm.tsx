@@ -25,9 +25,22 @@ function MessageForm({ channelId, username }: MessageFormProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const caretRef = useRef<number | null>(null)
   const setError = useChatStore((state) => state.setError)
+  const COMPOSER_MAX_HEIGHT = 200
+
+  const syncInputHeight = (el: HTMLTextAreaElement | null) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
+  }
+
+  const resetInputHeight = () => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+  }
 
   const canSubmit = !uploading && (body.trim().length > 0 || file !== null)
 
@@ -57,6 +70,7 @@ function MessageForm({ channelId, username }: MessageFormProps) {
       await emitNewMessage(body.trim(), channelId, username, attachment)
       setBody('')
       setFile(null)
+      resetInputHeight()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Не удалось отправить сообщение')
     } finally {
@@ -75,6 +89,7 @@ function MessageForm({ channelId, username }: MessageFormProps) {
     requestAnimationFrame(() => {
       input.focus()
       input.setSelectionRange(position, position)
+      syncInputHeight(input)
     })
     setEmojiOpen(false)
   }
@@ -128,12 +143,14 @@ function MessageForm({ channelId, username }: MessageFormProps) {
           ☺
         </button>
         <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.txt,.md,.json,.csv,.pdf,image/*,text/*,application/json,application/pdf" onChange={handleFileChange} hidden />
-        <input
+        <textarea
           ref={inputRef}
           value={body}
+          rows={1}
           onChange={(event) => {
             setBody(event.target.value)
             caretRef.current = event.target.selectionStart
+            syncInputHeight(event.target)
           }}
           placeholder="Введите сообщение..."
           disabled={uploading}
