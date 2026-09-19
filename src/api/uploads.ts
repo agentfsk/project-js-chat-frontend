@@ -1,4 +1,5 @@
 import { ApiError } from './client'
+import { BACKEND_URL } from '../config'
 import { useAuthStore } from '../store/auth'
 import type { Attachment } from '../types'
 
@@ -27,7 +28,7 @@ async function uploadMultipart(path: string, file: File): Promise<unknown> {
 
   let response: Response
   try {
-    response = await fetch(path, {
+    response = await fetch(`${BACKEND_URL}${path}`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       body: formData,

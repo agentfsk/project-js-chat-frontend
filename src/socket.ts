@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client'
+import { BACKEND_URL } from './config'
 import { useChatStore } from './store/chat'
 import { useUsersStore } from './store/users'
 import { useAuthStore } from './store/auth'
@@ -13,7 +14,7 @@ export function connectSocket(): Socket | null {
   if (connected) return socket
   const { token } = useAuthStore.getState()
   if (!token) return null
-  socket = io({ path: '/socket.io', auth: { token } })
+  socket = io(BACKEND_URL || undefined, { path: '/socket.io', auth: { token } })
   connected = true
 
   socket.on('newMessage', (payload) => {

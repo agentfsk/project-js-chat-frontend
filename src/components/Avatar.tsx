@@ -1,3 +1,5 @@
+import { resolveMediaUrl } from '../utils/mediaUrl'
+
 type AvatarProps = {
   username: string
   src?: string | null
@@ -6,12 +8,13 @@ type AvatarProps = {
 
 function Avatar({ username, src, size = 28 }: AvatarProps) {
   const initial = username.trim().charAt(0).toUpperCase() || '?'
+  const resolvedSrc = resolveMediaUrl(src)
 
-  if (src) {
+  if (resolvedSrc) {
     return (
       <img
         className="avatar avatar-img"
-        src={src}
+        src={resolvedSrc}
         alt={username}
         style={{ width: size, height: size }}
       />

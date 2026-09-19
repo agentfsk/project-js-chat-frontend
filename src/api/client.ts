@@ -1,4 +1,5 @@
 import { useAuthStore } from '../store/auth'
+import { BACKEND_URL } from '../config'
 
 export class ApiError extends Error {
   status: number
@@ -21,7 +22,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 
   let response: Response
   try {
-    response = await fetch(path, { ...options, headers })
+    response = await fetch(`${BACKEND_URL}${path}`, { ...options, headers })
   } catch {
     throw new ApiError(0, 'Не удалось подключиться к серверу')
   }
