@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, useRef, useState } from 'react'
+import { lazy, Suspense, type ChangeEvent, type FormEvent, useRef, useState } from 'react'
 import { useChatStore } from '../store/chat'
 import { emitNewMessage } from '../socket'
 import {
@@ -11,6 +11,8 @@ import GifPicker from './GifPicker'
 import type { GiphyGif } from '../api/giphy'
 import type { Attachment } from '../types'
 
+const EmojiPicker = lazy(() => import('./EmojiPicker'))
+
 type MessageFormProps = {
   channelId: number
   username: string
@@ -21,7 +23,10 @@ function MessageForm({ channelId, username }: MessageFormProps) {
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [emojiOpen, setEmojiOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const caretRef = useRef<number | null>(null)
   const setError = useChatStore((state) => state.setError)
 
   const canSubmit = !uploading && (body.trim().length > 0 || file !== null)
@@ -57,6 +62,21 @@ function MessageForm({ channelId, username }: MessageFormProps) {
     } finally {
       setUploading(false)
     }
+  }
+
+  const handleEmojiSelect = (emoji: string) => {
+    const input = inputRef.current
+    if (!input) return
+    const caret = caretRef.current ?? input.selectionStart ?? body.length
+    const next = body.slice(0, caret) + emoji + body.slice(caret)
+    setBody(next)
+    const position = caret + emoji.length
+    caretRef.current = position
+    requestAnimationFrame(() => {
+      input.focus()
+      input.setSelectionRange(position, position)
+    })
+    setEmojiOpen(false)
   }
 
   const handleGifSelect = async (gif: GiphyGif) => {
@@ -98,10 +118,23 @@ function MessageForm({ channelId, username }: MessageFormProps) {
         >
           GIF
         </button>
+        <button
+          type="button"
+          className="icon-btn"
+          title="Вставить эмодзи"
+          disabled={uploading}
+          onClick={() => setEmojiOpen((open) => !open)}
+        >
+          ☺
+        </button>
         <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.txt,.md,.json,.csv,.pdf,image/*,text/*,application/json,application/pdf" onChange={handleFileChange} hidden />
         <input
+          ref={inputRef}
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => {
+            setBody(event.target.value)
+            caretRef.current = event.target.selectionStart
+          }}
           placeholder="Введите сообщение..."
           disabled={uploading}
         />
@@ -119,6 +152,11 @@ function MessageForm({ channelId, username }: MessageFormProps) {
             </button>
           )}
         </div>
+      )}
+      {emojiOpen && (
+        <Suspense fallback={null}>
+          <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setEmojiOpen(false)} />
+        </Suspense>
       )}
       {pickerOpen && (
         <GifPicker onSelect={handleGifSelect} onClose={() => setPickerOpen(false)} />
