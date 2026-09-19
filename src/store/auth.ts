@@ -7,6 +7,7 @@ type AuthState = {
   token: string | null
   username: string | null
   setSession: (token: string, username: string) => void
+  setUsername: (username: string) => void
   clear: () => void
 }
 
@@ -17,6 +18,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem(TOKEN_KEY, token)
     localStorage.setItem(USERNAME_KEY, username)
     set({ token, username })
+  },
+  setUsername: (username) => {
+    localStorage.setItem(USERNAME_KEY, username)
+    set({ username })
   },
   clear: () => {
     localStorage.removeItem(TOKEN_KEY)

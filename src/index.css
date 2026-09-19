@@ -168,6 +168,22 @@ textarea {
   }
 }
 
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-h);
+  font-size: 14px;
+}
+
 .chat-body {
   flex: 1;
   display: flex;
@@ -187,6 +203,56 @@ textarea {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+.sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+
+  button {
+    flex: 1;
+    padding: 6px 8px;
+    background: transparent;
+    font-size: 14px;
+
+    &.active {
+      background: var(--accent-bg);
+      border-color: var(--accent);
+    }
+  }
+}
+
+.search-input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+.search-empty {
+  padding: 8px 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.avatar {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #1c1e26;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .channel-bar-title {
@@ -222,11 +288,15 @@ textarea {
 
 .channel-name {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   text-align: left;
   background: transparent;
   border: none;
   padding: 0;
   color: var(--text);
+  min-width: 0;
 
   &:hover {
     border-color: transparent;
@@ -235,6 +305,37 @@ textarea {
 
 .channel-item.active .channel-name {
   color: var(--text-h);
+}
+
+.channel-item.dm-noncontact {
+  border: 1px dashed var(--border);
+
+  &:hover {
+    border-color: var(--accent);
+  }
+
+  &.active {
+    border-color: var(--accent);
+  }
+}
+
+.channel-name .dm-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.channel-name .dm-badge {
+  flex-shrink: 0;
+  margin-left: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+  white-space: nowrap;
 }
 
 .channel-actions {
@@ -268,6 +369,64 @@ textarea {
   color: var(--danger);
   border-radius: 8px;
   font-size: 14px;
+}
+
+.contact-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  font-size: 14px;
+
+  strong {
+    color: var(--text-h);
+  }
+}
+
+.contact-banner-actions {
+  display: flex;
+  gap: 8px;
+
+  button {
+    padding: 4px 10px;
+  }
+}
+
+.profile-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+
+  .avatar-placeholder {
+    border-radius: 50%;
+  }
+}
+
+.profile-name {
+  color: var(--text-h);
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.profile-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.avatar-remove {
+  color: var(--danger);
+  border-color: var(--danger);
+
+  &:hover {
+    border-color: var(--danger);
+  }
 }
 
 .message-list {

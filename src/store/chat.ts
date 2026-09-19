@@ -12,6 +12,7 @@ export type ChatState = {
   addChannel: (channel: Channel) => void
   renameChannel: (channel: Channel) => void
   removeChannel: (id: number) => void
+  renameUser: (oldName: string, newName: string) => void
   setError: (message: string | null) => void
 }
 
@@ -48,6 +49,13 @@ export const useChatStore = create<ChatState>((set) => ({
         state.currentChannelId === id ? (channels[0]?.id ?? null) : state.currentChannelId
       return { channels, messages, currentChannelId }
     }),
+  renameUser: (oldName, newName) =>
+    set((state) => ({
+      messages: state.messages.map((m) => (m.username === oldName ? { ...m, username: newName } : m)),
+      channels: state.channels.map((c) =>
+        c.private && c.name === oldName ? { ...c, name: newName } : c,
+      ),
+    })),
   setError: (message) => set({ error: message }),
 }))
 
