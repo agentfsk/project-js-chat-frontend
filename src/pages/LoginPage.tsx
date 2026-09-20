@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { login, signup } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuthStore } from '../store/auth'
+import ThemeToggle from '../components/ThemeToggle'
 
 type Mode = 'login' | 'signup'
 
@@ -59,6 +60,7 @@ function LoginPage() {
 
   return (
     <div className="login-page">
+      <ThemeToggle />
       <form className="auth-card" onSubmit={handleSubmit}>
         <h1>Мессенджер</h1>
         <div className="auth-tabs">

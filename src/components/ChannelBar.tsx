@@ -11,6 +11,11 @@ import RemoveChannelModal from './RemoveChannelModal'
 
 type Tab = 'private' | 'channels'
 
+type ChannelBarProps = {
+  open?: boolean
+  onNavigate?: () => void
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
@@ -110,7 +115,7 @@ function DmRow({ channel, active, onSelect }: DmRowProps) {
   )
 }
 
-function ChannelBar() {
+function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
   const channels = useChatStore((state) => state.channels)
   const currentChannelId = useChatStore((state) => state.currentChannelId)
   const setActiveChannel = useChatStore((state) => state.setActiveChannel)
@@ -121,6 +126,11 @@ function ChannelBar() {
   const [searched, setSearched] = useState('')
   const [results, setResults] = useState<UserProfile[]>([])
   const [selected, setSelected] = useState<UserProfile | null>(null)
+
+  const handleSelectChannel = (id: number) => {
+    setActiveChannel(id)
+    onNavigate?.()
+  }
 
   const privateChannels = channels.filter((channel) => channel.private)
   const publicChannels = channels.filter((channel) => !channel.private)
@@ -165,7 +175,7 @@ function ChannelBar() {
   }
 
   return (
-    <aside className="channel-bar">
+    <aside className={`channel-bar${open ? ' drawer-open' : ''}`}>
       <div className="sidebar-tabs">
         <button
           type="button"
@@ -202,7 +212,7 @@ function ChannelBar() {
                 key={channel.id}
                 channel={channel}
                 active={channel.id === currentChannelId}
-                onSelect={() => setActiveChannel(channel.id)}
+                onSelect={() => handleSelectChannel(channel.id)}
               />
             ))}
           </ul>
@@ -245,7 +255,7 @@ function ChannelBar() {
                   key={channel.id}
                   channel={channel}
                   active={channel.id === currentChannelId}
-                  onSelect={() => setActiveChannel(channel.id)}
+                  onSelect={() => handleSelectChannel(channel.id)}
                 />
               ))}
             </ul>

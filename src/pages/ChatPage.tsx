@@ -11,7 +11,10 @@ import MessageList from '../components/MessageList'
 import MessageForm from '../components/MessageForm'
 import ContactRequestBanner from '../components/ContactRequestBanner'
 import EditProfileModal from '../components/EditProfileModal'
+import ThemeToggle from '../components/ThemeToggle'
 import Avatar from '../components/Avatar'
+
+const MOBILE_QUERY = '(max-width: 700px)'
 
 function ChatPage() {
   const channels = useChatStore((state) => state.channels)
@@ -25,6 +28,7 @@ function ChatPage() {
   const requests = useUsersStore((state) => state.requests)
   const messages = useChatStore(useShallow(selectActiveChannelMessages))
   const [editingProfile, setEditingProfile] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   useEffect(() => {
     connectSocket()
@@ -44,6 +48,15 @@ function ChatPage() {
     return disconnectSocket
   }, [setInitialData])
 
+  useEffect(() => {
+    const media = window.matchMedia(MOBILE_QUERY)
+    const handleChange = () => {
+      if (!media.matches) setDrawerOpen(false)
+    }
+    media.addEventListener('change', handleChange)
+    return () => media.removeEventListener('change', handleChange)
+  }, [])
+
   const activeChannel = channels.find((channel) => channel.id === currentChannelId) ?? null
   const pendingRequest =
     activeChannel?.private && activeChannel.id !== undefined
@@ -53,8 +66,19 @@ function ChatPage() {
   return (
     <div className="chat-page">
       <header className="chat-header">
-        <h1>Мессенджер</h1>
+        <div className="chat-header-left">
+          <button
+            type="button"
+            className="icon-btn burger-btn"
+            aria-label="Открыть список каналов"
+            onClick={() => setDrawerOpen(true)}
+          >
+            ☰
+          </button>
+          <h1>Мессенджер</h1>
+        </div>
         <div className="chat-header-right">
+          <ThemeToggle />
           {me && (
             <button type="button" className="profile-entry" onClick={() => setEditingProfile(true)}>
               <Avatar username={me.username} src={me.avatarUrl} size={28} />
@@ -66,8 +90,9 @@ function ChatPage() {
           </button>
         </div>
       </header>
+      {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />}
       <div className="chat-body">
-        <ChannelBar />
+        <ChannelBar open={drawerOpen} onNavigate={() => setDrawerOpen(false)} />
         <main className="chat-main">
           {error && <div className="app-error">{error}</div>}
           {activeChannel && (
