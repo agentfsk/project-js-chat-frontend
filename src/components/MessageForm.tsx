@@ -18,9 +18,18 @@ type MessageFormProps = {
   username: string
   editingMessage: Message | null
   onCancelEdit: () => void
+  replyingMessage: Message | null
+  onCancelReply: () => void
 }
 
-function MessageForm({ channelId, username, editingMessage, onCancelEdit }: MessageFormProps) {
+function MessageForm({
+  channelId,
+  username,
+  editingMessage,
+  onCancelEdit,
+  replyingMessage,
+  onCancelReply,
+}: MessageFormProps) {
   const [body, setBody] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -95,10 +104,11 @@ function MessageForm({ channelId, username, editingMessage, onCancelEdit }: Mess
     setUploading(true)
     try {
       const attachment = file ? await uploadFile(file) : undefined
-      await emitNewMessage(body.trim(), channelId, username, attachment)
+      await emitNewMessage(body.trim(), channelId, username, attachment, replyingMessage?.id)
       setBody('')
       setFile(null)
       resetInputHeight()
+      onCancelReply()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Не удалось отправить сообщение')
     } finally {
@@ -131,19 +141,31 @@ function MessageForm({ channelId, username, editingMessage, onCancelEdit }: Mess
       url: gif.images.downsized.url,
     }
     try {
-      await emitNewMessage('', channelId, username, attachment)
+      await emitNewMessage('', channelId, username, attachment, replyingMessage?.id)
       setBody('')
+      onCancelReply()
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Не удалось отправить сообщение')
     }
   }
 
   return (
-    <form className={`message-form${editingMessage ? ' editing' : ''}`} onSubmit={handleSubmit}>
+    <form
+      className={`message-form${editingMessage ? ' editing' : ''}${replyingMessage ? ' replying' : ''}`}
+      onSubmit={handleSubmit}
+    >
       {editingMessage && (
         <div className="message-form-edit-note">
           <span>Изменение сообщения</span>
           <button type="button" className="icon-btn" onClick={onCancelEdit}>
+            Отмена
+          </button>
+        </div>
+      )}
+      {replyingMessage && !editingMessage && (
+        <div className="message-form-reply-note">
+          <span>Ответ для {replyingMessage.username}</span>
+          <button type="button" className="icon-btn" onClick={onCancelReply}>
             Отмена
           </button>
         </div>
@@ -192,7 +214,7 @@ function MessageForm({ channelId, username, editingMessage, onCancelEdit }: Mess
             caretRef.current = event.target.selectionStart
             syncInputHeight(event.target)
           }}
-          placeholder={editingMessage ? 'Изменить сообщение...' : 'Введите сообщение...'}
+          placeholder={editingMessage ? 'Изменить сообщение...' : replyingMessage ? 'Ответить...' : 'Введите сообщение...'}
           disabled={uploading}
         />
         {editingMessage ? (

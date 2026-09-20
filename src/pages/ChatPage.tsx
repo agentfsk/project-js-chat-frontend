@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { fetchData } from '../api/data'
 import { ApiError } from '../api/client'
-import { connectSocket, disconnectSocket, emitDeleteMessage, emitPinMessage } from '../socket'
+import {
+  connectSocket,
+  disconnectSocket,
+  emitDeleteMessage,
+  emitPinMessage,
+  emitToggleReaction,
+} from '../socket'
 import { useChatStore, selectActiveChannelMessages, selectPinnedMessage } from '../store/chat'
 import { useUsersStore } from '../store/users'
 import { useAuthStore } from '../store/auth'
@@ -28,14 +34,17 @@ function ChatPage() {
 
   const me = useUsersStore((state) => state.me)
   const requests = useUsersStore((state) => state.requests)
+  const profiles = useUsersStore((state) => state.profiles)
   const messages = useChatStore(useShallow(selectActiveChannelMessages))
   const pinnedMessage = useChatStore(useShallow(selectPinnedMessage))
   const [editingProfile, setEditingProfile] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null)
+  const [replyingMessageId, setReplyingMessageId] = useState<number | null>(null)
   const messageListRef = useRef<MessageListHandle>(null)
   const setError = useChatStore((state) => state.setError)
   const editingMessage = messages.find((m) => m.id === editingMessageId) ?? null
+  const replyingMessage = messages.find((m) => m.id === replyingMessageId) ?? null
 
   useEffect(() => {
     connectSocket()
@@ -65,19 +74,30 @@ function ChatPage() {
   }, [])
 
   useEffect(() => {
-    if (editingMessageId !== null) {
-      messageListRef.current?.scrollToMessage(editingMessageId)
+    const targetId = editingMessageId ?? replyingMessageId
+    if (targetId !== null) {
+      messageListRef.current?.scrollToMessage(targetId)
     }
-  }, [editingMessageId])
+  }, [editingMessageId, replyingMessageId])
 
   const activeChannel = channels.find((channel) => channel.id === currentChannelId) ?? null
   const pendingRequest =
     activeChannel?.private && activeChannel.id !== undefined
       ? (requests.find((request) => request.channelId === activeChannel.id) ?? null)
       : null
+  const peerId = activeChannel?.private
+    ? (activeChannel.participants?.find((participantId) => participantId !== me?.id) ?? null)
+    : null
+  const peerProfile = peerId !== null ? profiles[peerId] ?? null : null
 
   const handleEdit = (message: Message) => {
+    setReplyingMessageId(null)
     setEditingMessageId(message.id)
+  }
+
+  const handleReply = (message: Message) => {
+    setEditingMessageId(null)
+    setReplyingMessageId(message.id)
   }
 
   const handleDelete = (message: Message) => {
@@ -89,6 +109,12 @@ function ChatPage() {
   const handlePinToggle = (message: Message) => {
     emitPinMessage(message.id, !message.pinned).catch((caught: unknown) => {
       setError(caught instanceof Error ? caught.message : 'Не удалось закрепить сообщение')
+    })
+  }
+
+  const handleMessageReaction = (message: Message, emoji: string) => {
+    emitToggleReaction(message.id, emoji).catch((caught: unknown) => {
+      setError(caught instanceof Error ? caught.message : 'Не удалось отправить реакцию')
     })
   }
 
@@ -125,7 +151,18 @@ function ChatPage() {
         <main className="chat-main">
           {error && <div className="app-error">{error}</div>}
           {activeChannel && (
-            <h2 className="channel-title">{activeChannel.private ? activeChannel.name : `#${activeChannel.name}`}</h2>
+            <h2 className="channel-title">
+              {activeChannel.private && peerProfile ? (
+                <>
+                  <Avatar username={peerProfile.username} src={peerProfile.avatarUrl} size={22} />
+                  <span>{activeChannel.name}</span>
+                </>
+              ) : activeChannel.private ? (
+                activeChannel.name
+              ) : (
+                `#${activeChannel.name}`
+              )}
+            </h2>
           )}
           {pendingRequest && <ContactRequestBanner request={pendingRequest} />}
           <PinnedMessageBanner
@@ -143,6 +180,8 @@ function ChatPage() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onPinToggle={handlePinToggle}
+            onReply={handleReply}
+            onMessageReaction={handleMessageReaction}
           />
           {activeChannel && (
             <MessageForm
@@ -150,6 +189,8 @@ function ChatPage() {
               username={username}
               editingMessage={editingMessage}
               onCancelEdit={() => setEditingMessageId(null)}
+              replyingMessage={replyingMessage}
+              onCancelReply={() => setReplyingMessageId(null)}
             />
           )}
         </main>

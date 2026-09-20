@@ -32,6 +32,9 @@ export function connectSocket(): Socket | null {
   socket.on('messagePinned', ({ messageId, pinned }) => {
     useChatStore.getState().setMessagePinned(Number(messageId), Boolean(pinned))
   })
+  socket.on('messageReacted', (message) => {
+    useChatStore.getState().updateMessage(message)
+  })
   socket.on('newChannel', (channel) => {
     useChatStore.getState().addChannel(channel)
   })
@@ -100,8 +103,9 @@ export function emitNewMessage(
   channelId: number,
   username: string,
   attachment?: Attachment,
+  replyToId?: number,
 ): Promise<void> {
-  return emitWithAck<void>('newMessage', { body, channelId, username, attachment })
+  return emitWithAck<void>('newMessage', { body, channelId, username, attachment, replyToId })
 }
 
 export function emitNewChannel(name: string): Promise<Channel> {
@@ -126,4 +130,8 @@ export function emitDeleteMessage(messageId: number): Promise<void> {
 
 export function emitPinMessage(messageId: number, pinned: boolean): Promise<void> {
   return emitWithAck<void>('pinMessage', { messageId, pinned })
+}
+
+export function emitToggleReaction(messageId: number, emoji: string): Promise<void> {
+  return emitWithAck<void>('toggleReaction', { messageId, emoji })
 }

@@ -26,6 +26,19 @@ export type Attachment = {
   url: string
 }
 
+export type MessageReaction = {
+  userId: number
+  emoji: string
+}
+
+export type MessageReplyTo = {
+  id: number
+  body: string
+  username: string
+  userId: number
+  attachment?: Attachment
+}
+
 export type Message = {
   id: number
   body: string
@@ -35,4 +48,6 @@ export type Message = {
   edited: boolean
   pinned: boolean
   attachment?: Attachment
+  reactions?: MessageReaction[]
+  replyTo?: MessageReplyTo
 }

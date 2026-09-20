@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 export type MessageMenuAction = {
-  id: 'edit' | 'delete' | 'pin'
+  id: 'edit' | 'delete' | 'pin' | 'reply'
   label: string
   danger?: boolean
 }

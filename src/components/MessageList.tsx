@@ -1,8 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import type { Channel, Message, UserProfile } from '../types'
+import type { Channel, Message, MessageReaction, UserProfile } from '../types'
 import { formatBytes } from '../utils/format'
 import { resolveMediaUrl } from '../utils/mediaUrl'
 import { canDeleteMessage, canEditMessage, canPinMessage } from '../utils/permissions'
+import { REACTION_EMOJIS } from '../data/emoji'
+import { useUsersStore } from '../store/users'
+import Avatar from './Avatar'
 import MessageContextMenu, { type MessageMenuAction } from './MessageContextMenu'
 
 const LONG_PRESS_MS = 500
@@ -20,6 +23,8 @@ type MessageListProps = {
   onEdit: (message: Message) => void
   onDelete: (message: Message) => void
   onPinToggle: (message: Message) => void
+  onReply: (message: Message) => void
+  onMessageReaction: (message: Message, emoji: string) => void
 }
 
 function AttachmentView({ attachment }: { attachment: NonNullable<Message['attachment']> }) {
@@ -51,8 +56,38 @@ function PinIcon() {
   )
 }
 
+type ReactionChip = { emoji: string; count: number; mine: boolean }
+
+function groupReactions(reactions: MessageReaction[] | undefined, myId: number | null): ReactionChip[] {
+  const map = new Map<string, ReactionChip>()
+  for (const reaction of reactions ?? []) {
+    const entry = map.get(reaction.emoji) ?? { emoji: reaction.emoji, count: 0, mine: false }
+    entry.count += 1
+    if (reaction.userId === myId) entry.mine = true
+    map.set(reaction.emoji, entry)
+  }
+  return [...map.values()]
+}
+
+function MessageReplyQuote({
+  replyTo,
+  onJump,
+}: {
+  replyTo: NonNullable<Message['replyTo']>
+  onJump: (id: number) => void
+}) {
+  return (
+    <button type="button" className="message-reply" onClick={() => onJump(replyTo.id)}>
+      <span className="message-reply-author">{replyTo.username}</span>
+      <span className="message-reply-text">
+        {replyTo.body || (replyTo.attachment ? 'Вложение' : '')}
+      </span>
+    </button>
+  )
+}
+
 const MessageList = forwardRef<MessageListHandle, MessageListProps>(function MessageList(
-  { messages, channel, me, editingId, onEdit, onDelete, onPinToggle },
+  { messages, channel, me, editingId, onEdit, onDelete, onPinToggle, onReply, onMessageReaction },
   ref,
 ) {
   const listRef = useRef<HTMLDivElement>(null)
@@ -61,17 +96,43 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
   const longPressHandled = useRef(false)
   const longPressStart = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const [menu, setMenu] = useState<{ message: Message; x: number; y: number } | null>(null)
+  const [reactionFor, setReactionFor] = useState<number | null>(null)
+  const profiles = useUsersStore((state) => state.profiles)
 
-  useImperativeHandle(ref, () => ({
-    scrollToMessage: (id: number) => {
-      const target = listRef.current?.querySelector(`[data-message-id="${id}"]`)
-      target?.scrollIntoView({ block: 'center' })
-    },
-  }))
+  const scrollToMessage = (id: number) => {
+    const target = listRef.current?.querySelector(`[data-message-id="${id}"]`)
+    target?.scrollIntoView({ block: 'center' })
+  }
+
+  useImperativeHandle(ref, () => ({ scrollToMessage }))
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages])
+
+  useEffect(() => {
+    if (reactionFor === null) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null
+      if (target && (target.closest('[data-reaction-popover]') || target.closest('[data-reaction-toggle]'))) {
+        return
+      }
+      setReactionFor(null)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setReactionFor(null)
+    }
+    const handleScroll = () => setReactionFor(null)
+
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [reactionFor])
 
   useEffect(() => {
     const el = listRef.current
@@ -129,7 +190,7 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
   }
 
   const buildActions = (message: Message): MessageMenuAction[] => {
-    const actions: MessageMenuAction[] = []
+    const actions: MessageMenuAction[] = [{ id: 'reply', label: 'Ответить' }]
     if (canEditMessage(message, me)) {
       actions.push({ id: 'edit', label: 'Изменить' })
     }
@@ -146,7 +207,8 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
     if (!menu) return
     const { message } = menu
     setMenu(null)
-    if (action.id === 'edit') onEdit(message)
+    if (action.id === 'reply') onReply(message)
+    else if (action.id === 'edit') onEdit(message)
     else if (action.id === 'delete') onDelete(message)
     else if (action.id === 'pin') onPinToggle(message)
   }
@@ -169,14 +231,65 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
           onTouchCancel={clearLongPress}
         >
           <div className="message-head">
+            <Avatar
+              username={message.username}
+              src={profiles[message.userId]?.avatarUrl ?? null}
+              size={26}
+            />
             <span className="message-user">{message.username}</span>
             {message.pinned && <PinIcon />}
           </div>
           <div className="message-content">
+            {message.replyTo && <MessageReplyQuote replyTo={message.replyTo} onJump={scrollToMessage} />}
             {message.body && <span className="message-body">{message.body}</span>}
             {message.edited && <span className="message-edit-badge">изменено</span>}
             {message.attachment && <AttachmentView attachment={message.attachment} />}
           </div>
+          {me && (
+            <div className="message-reactions">
+              {groupReactions(message.reactions, me.id).map((chip) => (
+                <button
+                  key={chip.emoji}
+                  type="button"
+                  className={`reaction-chip${chip.mine ? ' mine' : ''}`}
+                  onClick={() => onMessageReaction(message, chip.emoji)}
+                >
+                  <span className="reaction-chip-emoji">{chip.emoji}</span>
+                  <span className="reaction-chip-count">{chip.count}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                data-reaction-toggle
+                className="reaction-add"
+                title="Добавить реакцию"
+                onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}
+              >
+                +
+              </button>
+              {reactionFor === message.id && (
+                <div className="reaction-popover" data-reaction-popover>
+                  {REACTION_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className={`reaction-popover-item${
+                        message.reactions?.some((r) => r.userId === me.id && r.emoji === emoji)
+                          ? ' active'
+                          : ''
+                      }`}
+                      onClick={() => {
+                        onMessageReaction(message, emoji)
+                        setReactionFor(null)
+                      }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
       <div ref={bottomRef} />

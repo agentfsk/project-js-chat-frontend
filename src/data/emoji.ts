@@ -23,6 +23,8 @@ const CATEGORY_LABELS: Record<number, string> = {
 
 export const DEFAULT_GROUP = 0
 
+export const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '👏', '😮', '😢', '🎉']
+
 export const categories: EmojiCategory[] = emojiIndex.categories.map((category) => ({
   g: category.g,
   icon: category.icon,
