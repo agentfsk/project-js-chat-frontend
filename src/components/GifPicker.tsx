@@ -52,36 +52,34 @@ function GifPicker({ onSelect, onClose }: GifPickerProps) {
   }, [query])
 
   return (
-    <Modal title="Выберите GIF" onClose={onClose} wide bare>
-      <div className="gif-picker-compact">
-        <input
-          type="text"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Поиск GIF..."
-          autoFocus
-        />
-        {error && <p className="form-error modal-text">{error}</p>}
-        {loading && <p className="gif-picker-status modal-text">Загрузка...</p>}
-        {!loading && !error && gifs.length === 0 && (
-          <p className="gif-picker-status modal-text">Ничего не найдено</p>
-        )}
-        {!loading && !error && gifs.length > 0 && (
-          <div className="gif-picker-grid">
-            {gifs.map((gif) => (
-              <button
-                key={gif.id}
-                type="button"
-                className="gif-picker-item"
-                title={gif.title || 'GIF'}
-                onClick={() => onSelect(gif)}
-              >
-                <img src={gif.images.preview_gif.url} alt={gif.title || 'GIF'} loading="lazy" />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+    <Modal title="Выберите GIF" onClose={onClose} wide>
+      <input
+        type="text"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Поиск GIF..."
+        autoFocus
+      />
+      {error && <p className="form-error modal-text">{error}</p>}
+      {loading && <p className="modal-text gif-picker-status">Загрузка...</p>}
+      {!loading && !error && gifs.length === 0 && (
+        <p className="modal-text gif-picker-status">Ничего не найдено</p>
+      )}
+      {!loading && !error && gifs.length > 0 && (
+        <div className="gif-picker-grid">
+          {gifs.map((gif) => (
+            <button
+              key={gif.id}
+              type="button"
+              className="gif-picker-item"
+              title={gif.title || 'GIF'}
+              onClick={() => onSelect(gif)}
+            >
+              <img src={gif.images.preview_gif.url} alt={gif.title || 'GIF'} loading="lazy" />
+            </button>
+          ))}
+        </div>
+      )}
       <p className="gif-picker-credit">Powered by GIPHY</p>
     </Modal>
   )
