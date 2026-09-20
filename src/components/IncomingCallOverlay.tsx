@@ -10,6 +10,7 @@ function IncomingCallOverlay() {
   const direction = useCallStore((state) => state.direction)
 
   useEffect(() => {
+    if (phase !== 'ringing' || direction !== 'incoming') return
     const AudioCtx =
       window.AudioContext ??
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -34,7 +35,7 @@ function IncomingCallOverlay() {
       window.clearInterval(timer)
       void ctx.close()
     }
-  }, [])
+  }, [phase, direction])
 
   if (phase !== 'ringing' || direction !== 'incoming') return null
   if (!peer) return null
