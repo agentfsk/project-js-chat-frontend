@@ -23,4 +23,4 @@
 ## 4. Verification
 
 - [x] 4.1 Run `npm run lint` and `npm run build` and verify both pass cleanly
-- [ ] 4.2 Manual pass in `npm run dev`: dark theme on first visit, toggle to light persists across reload, desktop layout (>=700px) unchanged, and the mobile flow (burger opens drawer, channel select closes it, screen acts as chat-only below 700px) works
+- [x] 4.2 Manual pass in `npm run dev`: dark theme on first visit, toggle to light persists across reload, desktop layout (>=700px) unchanged, and the mobile flow (burger opens drawer, channel select closes it, screen acts as chat-only below 700px) works
