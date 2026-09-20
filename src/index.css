@@ -673,8 +673,8 @@ textarea {
 
 .reaction-popover {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
+  top: calc(100% + 6px);
+  right: 0;
   z-index: 20;
   display: flex;
   flex-wrap: wrap;
@@ -685,6 +685,11 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.reaction-popover.flip-up {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .reaction-popover-item {

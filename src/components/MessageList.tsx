@@ -97,6 +97,7 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
   const longPressStart = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const [menu, setMenu] = useState<{ message: Message; x: number; y: number } | null>(null)
   const [reactionFor, setReactionFor] = useState<number | null>(null)
+  const reactionPopoverRef = useRef<HTMLDivElement>(null)
   const profiles = useUsersStore((state) => state.profiles)
 
   const scrollToMessage = (id: number) => {
@@ -109,6 +110,17 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages])
+
+  useEffect(() => {
+    if (reactionFor === null) return
+    const popover = reactionPopoverRef.current
+    const list = listRef.current
+    if (popover && list) {
+      const popoverRect = popover.getBoundingClientRect()
+      const listRect = list.getBoundingClientRect()
+      popover.classList.toggle('flip-up', popoverRect.bottom > listRect.bottom)
+    }
+  }, [reactionFor])
 
   useEffect(() => {
     if (reactionFor === null) return
@@ -268,7 +280,7 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
                 +
               </button>
               {reactionFor === message.id && (
-                <div className="reaction-popover" data-reaction-popover>
+                <div className="reaction-popover" data-reaction-popover ref={reactionPopoverRef}>
                   {REACTION_EMOJIS.map((emoji) => (
                     <button
                       key={emoji}
