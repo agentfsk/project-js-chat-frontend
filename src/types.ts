@@ -10,6 +10,7 @@ export type UserProfile = {
   id: number
   username: string
   avatarUrl: string | null
+  role?: 'admin' | 'user'
 }
 
 export type ContactRequest = {
@@ -30,5 +31,8 @@ export type Message = {
   body: string
   channelId: number
   username: string
+  userId: number
+  edited: boolean
+  pinned: boolean
   attachment?: Attachment
 }

@@ -1,18 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { fetchData } from '../api/data'
 import { ApiError } from '../api/client'
-import { connectSocket, disconnectSocket } from '../socket'
-import { useChatStore, selectActiveChannelMessages } from '../store/chat'
+import { connectSocket, disconnectSocket, emitDeleteMessage, emitPinMessage } from '../socket'
+import { useChatStore, selectActiveChannelMessages, selectPinnedMessage } from '../store/chat'
 import { useUsersStore } from '../store/users'
 import { useAuthStore } from '../store/auth'
 import ChannelBar from '../components/ChannelBar'
-import MessageList from '../components/MessageList'
+import MessageList, { type MessageListHandle } from '../components/MessageList'
 import MessageForm from '../components/MessageForm'
 import ContactRequestBanner from '../components/ContactRequestBanner'
+import PinnedMessageBanner from '../components/PinnedMessageBanner'
 import EditProfileModal from '../components/EditProfileModal'
 import ThemeToggle from '../components/ThemeToggle'
 import Avatar from '../components/Avatar'
+import type { Message } from '../types'
 
 const MOBILE_QUERY = '(max-width: 700px)'
 
@@ -27,8 +29,13 @@ function ChatPage() {
   const me = useUsersStore((state) => state.me)
   const requests = useUsersStore((state) => state.requests)
   const messages = useChatStore(useShallow(selectActiveChannelMessages))
+  const pinnedMessage = useChatStore(useShallow(selectPinnedMessage))
   const [editingProfile, setEditingProfile] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null)
+  const messageListRef = useRef<MessageListHandle>(null)
+  const setError = useChatStore((state) => state.setError)
+  const editingMessage = messages.find((m) => m.id === editingMessageId) ?? null
 
   useEffect(() => {
     connectSocket()
@@ -57,11 +64,33 @@ function ChatPage() {
     return () => media.removeEventListener('change', handleChange)
   }, [])
 
+  useEffect(() => {
+    if (editingMessageId !== null) {
+      messageListRef.current?.scrollToMessage(editingMessageId)
+    }
+  }, [editingMessageId])
+
   const activeChannel = channels.find((channel) => channel.id === currentChannelId) ?? null
   const pendingRequest =
     activeChannel?.private && activeChannel.id !== undefined
       ? (requests.find((request) => request.channelId === activeChannel.id) ?? null)
       : null
+
+  const handleEdit = (message: Message) => {
+    setEditingMessageId(message.id)
+  }
+
+  const handleDelete = (message: Message) => {
+    emitDeleteMessage(message.id).catch((caught: unknown) => {
+      setError(caught instanceof Error ? caught.message : 'Не удалось удалить сообщение')
+    })
+  }
+
+  const handlePinToggle = (message: Message) => {
+    emitPinMessage(message.id, !message.pinned).catch((caught: unknown) => {
+      setError(caught instanceof Error ? caught.message : 'Не удалось закрепить сообщение')
+    })
+  }
 
   return (
     <div className="chat-page">
@@ -99,8 +128,30 @@ function ChatPage() {
             <h2 className="channel-title">{activeChannel.private ? activeChannel.name : `#${activeChannel.name}`}</h2>
           )}
           {pendingRequest && <ContactRequestBanner request={pendingRequest} />}
-          <MessageList messages={messages} />
-          {activeChannel && <MessageForm channelId={activeChannel.id} username={username} />}
+          <PinnedMessageBanner
+            message={pinnedMessage}
+            onNavigate={() => {
+              if (pinnedMessage) messageListRef.current?.scrollToMessage(pinnedMessage.id)
+            }}
+          />
+          <MessageList
+            ref={messageListRef}
+            messages={messages}
+            channel={activeChannel}
+            me={me}
+            editingId={editingMessage?.id ?? null}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onPinToggle={handlePinToggle}
+          />
+          {activeChannel && (
+            <MessageForm
+              channelId={activeChannel.id}
+              username={username}
+              editingMessage={editingMessage}
+              onCancelEdit={() => setEditingMessageId(null)}
+            />
+          )}
         </main>
       </div>
       {editingProfile && <EditProfileModal onClose={() => setEditingProfile(false)} />}

@@ -23,6 +23,15 @@ export function connectSocket(): Socket | null {
     }
     useChatStore.getState().addMessage(payload)
   })
+  socket.on('messageEdited', (message) => {
+    useChatStore.getState().updateMessage(message)
+  })
+  socket.on('messageDeleted', ({ messageId }) => {
+    useChatStore.getState().removeMessage(Number(messageId))
+  })
+  socket.on('messagePinned', ({ messageId, pinned }) => {
+    useChatStore.getState().setMessagePinned(Number(messageId), Boolean(pinned))
+  })
   socket.on('newChannel', (channel) => {
     useChatStore.getState().addChannel(channel)
   })
@@ -105,4 +114,16 @@ export function emitRenameChannel(id: number, name: string): Promise<Channel> {
 
 export function emitRemoveChannel(id: number): Promise<void> {
   return emitWithAck<void>('removeChannel', { id })
+}
+
+export function emitEditMessage(messageId: number, body: string): Promise<void> {
+  return emitWithAck<void>('editMessage', { messageId, body })
+}
+
+export function emitDeleteMessage(messageId: number): Promise<void> {
+  return emitWithAck<void>('deleteMessage', { messageId })
+}
+
+export function emitPinMessage(messageId: number, pinned: boolean): Promise<void> {
+  return emitWithAck<void>('pinMessage', { messageId, pinned })
 }

@@ -9,6 +9,9 @@ export type ChatState = {
   setInitialData: (channels: Channel[], messages: Message[], currentChannelId: number) => void
   setActiveChannel: (id: number) => void
   addMessage: (message: Message) => void
+  updateMessage: (message: Message) => void
+  removeMessage: (id: number) => void
+  setMessagePinned: (id: number, pinned: boolean) => void
   addChannel: (channel: Channel) => void
   renameChannel: (channel: Channel) => void
   removeChannel: (id: number) => void
@@ -29,6 +32,20 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: state.messages.some((m) => m.id === message.id)
         ? state.messages
         : [...state.messages, message],
+    })),
+  updateMessage: (message) =>
+    set((state) => ({
+      messages: state.messages.some((m) => m.id === message.id)
+        ? state.messages.map((m) => (m.id === message.id ? message : m))
+        : state.messages,
+    })),
+  removeMessage: (id) =>
+    set((state) => ({
+      messages: state.messages.filter((m) => m.id !== id),
+    })),
+  setMessagePinned: (id, pinned) =>
+    set((state) => ({
+      messages: state.messages.map((m) => (m.id === id ? { ...m, pinned } : m)),
     })),
   addChannel: (channel) =>
     set((state) => ({
@@ -63,4 +80,10 @@ export function selectActiveChannelMessages(state: ChatState): Message[] {
   return state.messages
     .filter((m) => m.channelId === state.currentChannelId)
     .sort((a, b) => a.id - b.id)
+}
+
+export function selectPinnedMessage(state: ChatState): Message | null {
+  return (
+    state.messages.find((m) => m.channelId === state.currentChannelId && m.pinned) ?? null
+  )
 }
