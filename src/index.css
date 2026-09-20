@@ -556,6 +556,7 @@ textarea {
 .message-form-row {
   display: flex;
   gap: 8px;
+  align-items: flex-end;
 
   textarea {
     flex: 1;
@@ -563,6 +564,14 @@ textarea {
     max-height: 200px;
     line-height: inherit;
   }
+}
+
+.send-btn {
+  flex-shrink: 0;
+}
+
+.send-icon {
+  display: none;
 }
 
 .attachment-chip {
@@ -821,6 +830,30 @@ textarea {
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 15;
+  }
+
+  .message-form {
+    padding: 10px 12px;
+  }
+
+  .message-form-row {
+    gap: 6px;
+  }
+
+  .message-form-row .icon-btn {
+    padding: 6px;
+  }
+
+  .send-btn {
+    padding: 8px 10px;
+  }
+
+  .send-icon {
+    display: inline;
+  }
+
+  .send-label {
+    display: none;
   }
 
   .login-page {

@@ -18,6 +18,7 @@
 - [x] 3.2 Add a burger button to `.chat-header` (hidden on desktop via CSS, visible below 700px) with a `drawerOpen` state and backdrop-tap-to-close in `ChatPage`, and verify the burger opens the drawer and tapping the dimmed area closes it without changing the channel
 - [x] 3.3 Add an `onNavigate` prop to `ChannelBar` invoked from every `setActiveChannel` call to close the drawer, and a `matchMedia('(max-width: 700px)')` listener in `ChatPage` that resets `drawerOpen` when resizing to desktop; verify selecting a channel closes the drawer and resizing past the breakpoint clears the state
 - [x] 3.4 Apply responsive padding/size tweaks to `LoginPage` (and any `.chat-header` overflow on narrow widths) and verify no horizontal scrolling below 700px and the auth card stays centered
+- [x] 3.5 Replace the «Отправить» submit button with a compact right-arrow icon on narrow screens (label kept on desktop) and stop the GIF/attach/emoji buttons from stretching by bottom-aligning `.message-form-row`; verify the form leaves more room for the textarea and the icon buttons sink with the textarea as it grows
 
 ## 4. Verification
 

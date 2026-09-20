@@ -155,8 +155,11 @@ function MessageForm({ channelId, username }: MessageFormProps) {
           placeholder="Введите сообщение..."
           disabled={uploading}
         />
-        <button type="submit" disabled={!canSubmit}>
-          {uploading ? 'Загрузка...' : 'Отправить'}
+        <button type="submit" className="send-btn" title="Отправить" disabled={!canSubmit}>
+          <span className="send-icon" aria-hidden="true">
+            {uploading ? '…' : '→'}
+          </span>
+          <span className="send-label">{uploading ? 'Загрузка...' : 'Отправить'}</span>
         </button>
       </div>
       {file && (
