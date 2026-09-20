@@ -12,6 +12,8 @@ import {
 import { useChatStore, selectActiveChannelMessages, selectPinnedMessage } from '../store/chat'
 import { useUsersStore } from '../store/users'
 import { useAuthStore } from '../store/auth'
+import { useCallStore } from '../store/calls'
+import * as callManager from '../callManager'
 import ChannelBar from '../components/ChannelBar'
 import MessageList, { type MessageListHandle } from '../components/MessageList'
 import MessageForm from '../components/MessageForm'
@@ -20,7 +22,10 @@ import PinnedMessageBanner from '../components/PinnedMessageBanner'
 import EditProfileModal from '../components/EditProfileModal'
 import ThemeToggle from '../components/ThemeToggle'
 import Avatar from '../components/Avatar'
-import type { Message } from '../types'
+import CallButtons from '../components/CallButtons'
+import IncomingCallOverlay from '../components/IncomingCallOverlay'
+import ActiveCallOverlay from '../components/ActiveCallOverlay'
+import type { CallMode, Message } from '../types'
 
 const MOBILE_QUERY = '(max-width: 700px)'
 
@@ -89,6 +94,14 @@ function ChatPage() {
     ? (activeChannel.participants?.find((participantId) => participantId !== me?.id) ?? null)
     : null
   const peerProfile = peerId !== null ? profiles[peerId] ?? null : null
+  const callPhase = useCallStore((state) => state.phase)
+  const inCall = callPhase === 'calling' || callPhase === 'ringing' || callPhase === 'active'
+
+  const handleStartCall = (mode: CallMode) => {
+    if (activeChannel && peerProfile) {
+      void callManager.startCall({ channelId: activeChannel.id, mode, peer: peerProfile })
+    }
+  }
 
   const handleEdit = (message: Message) => {
     setReplyingMessageId(null)
@@ -151,18 +164,23 @@ function ChatPage() {
         <main className="chat-main">
           {error && <div className="app-error">{error}</div>}
           {activeChannel && (
-            <h2 className="channel-title">
-              {activeChannel.private && peerProfile ? (
-                <>
-                  <Avatar username={peerProfile.username} src={peerProfile.avatarUrl} size={22} />
-                  <span>{activeChannel.name}</span>
-                </>
-              ) : activeChannel.private ? (
-                activeChannel.name
-              ) : (
-                `#${activeChannel.name}`
+            <div className="channel-title-row">
+              <h2 className="channel-title">
+                {activeChannel.private && peerProfile ? (
+                  <>
+                    <Avatar username={peerProfile.username} src={peerProfile.avatarUrl} size={22} />
+                    <span>{activeChannel.name}</span>
+                  </>
+                ) : activeChannel.private ? (
+                  activeChannel.name
+                ) : (
+                  `#${activeChannel.name}`
+                )}
+              </h2>
+              {activeChannel.private && peerProfile && (
+                <CallButtons peer={peerProfile} disabled={inCall} onCall={handleStartCall} />
               )}
-            </h2>
+            </div>
           )}
           {pendingRequest && <ContactRequestBanner request={pendingRequest} />}
           <PinnedMessageBanner
@@ -196,6 +214,8 @@ function ChatPage() {
         </main>
       </div>
       {editingProfile && <EditProfileModal onClose={() => setEditingProfile(false)} />}
+      <IncomingCallOverlay />
+      <ActiveCallOverlay />
     </div>
   )
 }

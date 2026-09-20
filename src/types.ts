@@ -51,3 +51,45 @@ export type Message = {
   reactions?: MessageReaction[]
   replyTo?: MessageReplyTo
 }
+
+export type CallMode = 'audio' | 'video'
+
+export type CallPhase = 'idle' | 'calling' | 'ringing' | 'active' | 'ended'
+
+export type CallSignalData =
+  | { type: 'ice'; candidate: RTCIceCandidateInit | null }
+  | { type: 'offer'; sdp: string }
+  | { type: 'answer'; sdp: string }
+
+export type CallOfferOutcome = 'ringing' | 'offline' | 'busy'
+
+export type CallIncomingPayload = {
+  callId: string
+  channelId: number
+  mode: CallMode
+  peer: UserProfile
+  sdp: string
+}
+
+export type CallAnsweredPayload = {
+  callId: string
+  sdp: string
+}
+
+export type CallSignalPayload = {
+  callId: string
+  data: CallSignalData
+}
+
+export type CallEndedPayload = {
+  callId: string
+  reason: string
+}
+
+export type CallRejectedPayload = {
+  callId: string
+}
+
+export type CallActivePayload = {
+  callId: string
+}

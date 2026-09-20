@@ -3,7 +3,8 @@ import { BACKEND_URL } from './config'
 import { useChatStore } from './store/chat'
 import { useUsersStore } from './store/users'
 import { useAuthStore } from './store/auth'
-import type { Attachment, Channel, UserProfile } from './types'
+import * as callManager from './callManager'
+import type { Attachment, CallMode, CallSignalData, Channel, UserProfile } from './types'
 
 type AckPayload = { status: string; message?: string; data?: unknown }
 
@@ -66,6 +67,24 @@ export function connectSocket(): Socket | null {
   socket.on('userUpdated', (profile) => {
     useUsersStore.getState().applyUserUpdate(profile)
   })
+  socket.on('callIncoming', (payload) => {
+    callManager.onCallIncoming(payload)
+  })
+  socket.on('callAnswered', (payload) => {
+    callManager.onCallAnswered(payload)
+  })
+  socket.on('callSignal', (payload) => {
+    callManager.onCallSignal(payload)
+  })
+  socket.on('callRejected', (payload) => {
+    callManager.onCallRejected(payload)
+  })
+  socket.on('callEnded', (payload) => {
+    callManager.onCallEnded(payload)
+  })
+  socket.on('callActive', (payload) => {
+    callManager.onCallActive(payload)
+  })
   socket.on('connect_error', (err) => {
     if (err.message === 'unauthorized') {
       useAuthStore.getState().clear()
@@ -80,6 +99,7 @@ export function disconnectSocket() {
   socket?.disconnect()
   socket = null
   connected = false
+  callManager.onSocketClosed()
 }
 
 function emitWithAck<T>(event: string, payload: unknown): Promise<T> {
@@ -134,4 +154,29 @@ export function emitPinMessage(messageId: number, pinned: boolean): Promise<void
 
 export function emitToggleReaction(messageId: number, emoji: string): Promise<void> {
   return emitWithAck<void>('toggleReaction', { messageId, emoji })
+}
+
+export function emitCallOffer(payload: {
+  callId: string
+  channelId: number
+  mode: CallMode
+  sdp: string
+}): Promise<{ outcome: 'ringing' | 'offline' | 'busy' }> {
+  return emitWithAck<{ outcome: 'ringing' | 'offline' | 'busy' }>('callOffer', payload)
+}
+
+export function emitCallAnswer(callId: string, sdp: string): Promise<void> {
+  return emitWithAck<void>('callAnswer', { callId, sdp })
+}
+
+export function emitCallSignal(callId: string, data: CallSignalData): Promise<void> {
+  return emitWithAck<void>('callSignal', { callId, data })
+}
+
+export function emitCallReject(callId: string): Promise<void> {
+  return emitWithAck<void>('callReject', { callId })
+}
+
+export function emitCallHangup(callId: string, reason: string): Promise<void> {
+  return emitWithAck<void>('callHangup', { callId, reason })
 }
