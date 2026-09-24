@@ -6,6 +6,7 @@ export type EngineOptions = {
   onSignal: (data: CallSignalData) => void
   onRemoteStream: (stream: MediaStream) => void
   onFailure: (message: string) => void
+  onRemoteVideo?: (active: boolean) => void
   polite?: boolean
 }
 
@@ -28,12 +29,15 @@ export class CallEngine {
   private onSignal: (data: CallSignalData) => void
   private onRemoteStream: (stream: MediaStream) => void
   private onFailure: (message: string) => void
+  private onRemoteVideo?: (active: boolean) => void
+  private lastRemoteVideo = false
 
   constructor(options: EngineOptions) {
     this.polite = options.polite ?? false
     this.onSignal = options.onSignal
     this.onRemoteStream = options.onRemoteStream
     this.onFailure = options.onFailure
+    this.onRemoteVideo = options.onRemoteVideo
     this.localStream = new MediaStream()
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
 
@@ -42,9 +46,11 @@ export class CallEngine {
     }
     this.pc.ontrack = (event) => {
       this.updateRemoteStream(event.track)
+      this.updateRemoteMedia()
     }
     this.pc.onconnectionstatechange = () => {
       if (this.closed) return
+      if (this.pc.connectionState === 'connected') this.updateRemoteMedia()
       if (this.pc.connectionState === 'failed' || this.pc.connectionState === 'closed') {
         this.onFailure('Соединение было прервано')
       }
@@ -87,6 +93,7 @@ export class CallEngine {
     const answer = await this.pc.createAnswer()
     await this.pc.setLocalDescription(answer)
     this.handshakeComplete = true
+    this.updateRemoteMedia()
     return answer.sdp ?? ''
   }
 
@@ -260,6 +267,23 @@ export class CallEngine {
     this.onRemoteStream(this.remoteStream)
   }
 
+  private updateRemoteMedia(): void {
+    const videoTransceivers = this.pc
+      .getTransceivers()
+      .filter((transceiver) => transceiver.receiver.track.kind === 'video')
+    const active =
+      videoTransceivers.length > 0 &&
+      videoTransceivers.some(
+        (transceiver) =>
+          transceiver.currentDirection === null ||
+          (transceiver.currentDirection ?? '').includes('recv'),
+      )
+    if (active !== this.lastRemoteVideo) {
+      this.lastRemoteVideo = active
+      this.onRemoteVideo?.(active)
+    }
+  }
+
   private async handleOffer(sdp: string): Promise<void> {
     const offerCollision = this.makingOffer || this.pc.signalingState !== 'stable'
     this.ignoreOffer = !this.polite && offerCollision
@@ -276,6 +300,7 @@ export class CallEngine {
     const answer = await this.pc.createAnswer()
     await this.pc.setLocalDescription(answer)
     this.onSignal({ type: 'answer', sdp: answer.sdp ?? '' })
+    this.updateRemoteMedia()
     if (this.negotiationNeeded) this.requestNegotiation()
   }
 
@@ -284,6 +309,7 @@ export class CallEngine {
     await this.flushCandidates()
     this.ignoreOffer = false
     this.handshakeComplete = true
+    this.updateRemoteMedia()
     if (this.negotiationNeeded) this.requestNegotiation()
   }
 

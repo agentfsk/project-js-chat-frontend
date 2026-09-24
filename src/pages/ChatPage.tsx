@@ -56,7 +56,12 @@ function ChatPage() {
     void fetchData()
       .then((data) => {
         setInitialData(data.channels, data.messages, data.currentChannelId)
-        useUsersStore.getState().setInitialData(data.me, data.contacts, data.requests)
+        useUsersStore.getState().setInitialData(
+          data.me,
+          data.contacts,
+          data.requests,
+          data.outgoingRequests,
+        )
       })
       .catch((caught: unknown) => {
         if (caught instanceof ApiError && caught.status === 401) {
@@ -169,7 +174,7 @@ function ChatPage() {
                 {activeChannel.private && peerProfile ? (
                   <>
                     <Avatar username={peerProfile.username} src={peerProfile.avatarUrl} size={22} />
-                    <span>{activeChannel.name}</span>
+                    <span>{peerProfile.username}</span>
                   </>
                 ) : activeChannel.private ? (
                   activeChannel.name

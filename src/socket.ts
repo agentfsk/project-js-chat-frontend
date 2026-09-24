@@ -85,6 +85,9 @@ export function connectSocket(): Socket | null {
   socket.on('callActive', (payload) => {
     callManager.onCallActive(payload)
   })
+  socket.on('disconnect', () => {
+    callManager.onSocketClosed()
+  })
   socket.on('connect_error', (err) => {
     if (err.message === 'unauthorized') {
       useAuthStore.getState().clear()

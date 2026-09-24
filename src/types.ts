@@ -19,6 +19,13 @@ export type ContactRequest = {
   channelId: number
 }
 
+export type OutgoingContactRequest = {
+  id: number
+  to: UserProfile
+  channelId: number
+  status: 'pending' | 'accepted' | 'declined'
+}
+
 export type Attachment = {
   name: string
   mime: string

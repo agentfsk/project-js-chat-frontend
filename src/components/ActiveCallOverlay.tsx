@@ -69,6 +69,7 @@ function ActiveCallOverlay() {
   const screenOn = useCallStore((state) => state.screenOn)
   const localStream = useCallStore((state) => state.localStream)
   const remoteStream = useCallStore((state) => state.remoteStream)
+  const remoteVideo = useCallStore((state) => state.remoteVideo)
   const duration = useCallDuration()
   const remoteVideoMuted = useVideoMuted(remoteStream)
 
@@ -110,7 +111,7 @@ function ActiveCallOverlay() {
   const localHasVideo = Boolean(localStream?.getVideoTracks().length)
   const showLocalVideo = localHasVideo && (camOn || screenOn)
   const remoteHasVideo = Boolean(remoteStream?.getVideoTracks().length)
-  const showRemoteVideo = remoteHasVideo && !remoteVideoMuted
+  const showRemoteVideo = remoteHasVideo && remoteVideo && !remoteVideoMuted
 
   return (
     <div className="call-overlay active-call" role="dialog" aria-modal="true">

@@ -80,6 +80,9 @@ function createEngine(polite: boolean): CallEngine {
         remoteStream: stream,
       })
     },
+    onRemoteVideo: (active) => {
+      useCallStore.getState().setRemoteVideo(active)
+    },
     onFailure: (message) => {
       const state = useCallStore.getState()
       if (state.phase === 'idle' || state.phase === 'ended') return

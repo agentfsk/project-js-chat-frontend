@@ -16,6 +16,7 @@ export type CallState = {
   error: string | null
   localStream: MediaStream | null
   remoteStream: MediaStream | null
+  remoteVideo: boolean
   beginOutgoing: (params: {
     callId: string
     channelId: number
@@ -28,6 +29,7 @@ export type CallState = {
   setMic: (on: boolean) => void
   setCam: (on: boolean) => void
   setScreen: (on: boolean) => void
+  setRemoteVideo: (on: boolean) => void
   end: (error?: string) => void
   clear: () => void
 }
@@ -45,6 +47,7 @@ const initial = {
   error: null,
   localStream: null,
   remoteStream: null,
+  remoteVideo: false,
 }
 
 export const useCallStore = create<CallState>((set) => ({
@@ -78,6 +81,7 @@ export const useCallStore = create<CallState>((set) => ({
   setMic: (on) => set({ micOn: on }),
   setCam: (on) => set({ camOn: on }),
   setScreen: (on) => set({ screenOn: on }),
+  setRemoteVideo: (on) => set({ remoteVideo: on }),
   end: (error) => set({ phase: 'ended', error: error ?? null }),
   clear: () => set({ ...initial }),
 }))

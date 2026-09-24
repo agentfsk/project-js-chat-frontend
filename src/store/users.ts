@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ContactRequest, UserProfile } from '../types'
+import type { ContactRequest, OutgoingContactRequest, UserProfile } from '../types'
 import { useChatStore } from './chat'
 import { useAuthStore } from './auth'
 
@@ -7,8 +7,14 @@ type UsersState = {
   me: UserProfile | null
   contacts: UserProfile[]
   requests: ContactRequest[]
+  outgoingRequests: OutgoingContactRequest[]
   profiles: Record<number, UserProfile>
-  setInitialData: (me: UserProfile, contacts: UserProfile[], requests: ContactRequest[]) => void
+  setInitialData: (
+    me: UserProfile,
+    contacts: UserProfile[],
+    requests: ContactRequest[],
+    outgoingRequests: OutgoingContactRequest[],
+  ) => void
   upsertProfiles: (profiles: UserProfile[]) => void
   addRequest: (request: ContactRequest) => void
   removeRequest: (requestId: number) => void
@@ -21,13 +27,21 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   me: null,
   contacts: [],
   requests: [],
+  outgoingRequests: [],
   profiles: {},
-  setInitialData: (me, contacts, requests) => {
-    const profiles = [me, ...contacts].reduce<Record<number, UserProfile>>((acc, profile) => {
-      acc[profile.id] = profile
-      return acc
-    }, {})
-    set({ me, contacts, requests, profiles })
+  setInitialData: (me, contacts, requests, outgoingRequests) => {
+    const peerProfiles = [
+      ...requests.map((request) => request.from),
+      ...outgoingRequests.map((request) => request.to),
+    ]
+    const profiles = [me, ...contacts, ...peerProfiles].reduce<Record<number, UserProfile>>(
+      (acc, profile) => {
+        acc[profile.id] = profile
+        return acc
+      },
+      {},
+    )
+    set({ me, contacts, requests, outgoingRequests, profiles })
   },
   upsertProfiles: (list) =>
     set((state) => ({

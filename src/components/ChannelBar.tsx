@@ -100,17 +100,26 @@ function DmRow({ channel, active, onSelect }: DmRowProps) {
   const me = useUsersStore((state) => state.me)
   const profiles = useUsersStore((state) => state.profiles)
   const contacts = useUsersStore((state) => state.contacts)
+  const [profileOpen, setProfileOpen] = useState(false)
   const peerId = channel.participants?.find((id) => id !== me?.id)
   const peer = peerId !== undefined ? profiles[peerId] : undefined
   const isContact = peerId !== undefined && contacts.some((contact) => contact.id === peerId)
 
   return (
     <li className={`channel-item${active ? ' active' : ''}${isContact ? '' : ' dm-noncontact'}`}>
-      <Avatar username={channel.name} src={peer?.avatarUrl} />
+      <button
+        type="button"
+        className="channel-avatar-btn"
+        aria-label={`Профиль ${peer?.username ?? channel.name}`}
+        onClick={() => setProfileOpen(true)}
+      >
+        <Avatar username={peer?.username ?? channel.name} src={peer?.avatarUrl} />
+      </button>
       <button type="button" className="channel-name" onClick={onSelect}>
-        <span className="dm-name">{channel.name}</span>
+        <span className="dm-name">{peer?.username ?? channel.name}</span>
         {!isContact && <span className="dm-badge">не в контактах</span>}
       </button>
+      {profileOpen && peer && <ProfileModal profile={peer} onClose={() => setProfileOpen(false)} />}
     </li>
   )
 }
