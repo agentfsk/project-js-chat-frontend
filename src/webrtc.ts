@@ -6,6 +6,7 @@ export type EngineOptions = {
   onSignal: (data: CallSignalData) => void
   onRemoteStream: (stream: MediaStream) => void
   onFailure: (message: string) => void
+  polite?: boolean
 }
 
 export class CallEngine {
@@ -14,16 +15,22 @@ export class CallEngine {
   private remoteStream = new MediaStream()
   private camEnabled = false
   private cameraTrack: MediaStreamTrack | null = null
+  private videoTransceiver: RTCRtpTransceiver | null = null
   private screenStream: MediaStream | null = null
   private pendingCandidates: RTCIceCandidateInit[] = []
   private makingOffer = false
+  private ignoreOffer = false
+  private negotiationNeeded = false
+  private negotiationScheduled = false
   private handshakeComplete = false
   private closed = false
+  private polite: boolean
   private onSignal: (data: CallSignalData) => void
   private onRemoteStream: (stream: MediaStream) => void
   private onFailure: (message: string) => void
 
   constructor(options: EngineOptions) {
+    this.polite = options.polite ?? false
     this.onSignal = options.onSignal
     this.onRemoteStream = options.onRemoteStream
     this.onFailure = options.onFailure
@@ -34,8 +41,7 @@ export class CallEngine {
       this.onSignal({ type: 'ice', candidate: event.candidate ? event.candidate.toJSON() : null })
     }
     this.pc.ontrack = (event) => {
-      this.remoteStream.addTrack(event.track)
-      this.onRemoteStream(this.remoteStream)
+      this.updateRemoteStream(event.track)
     }
     this.pc.onconnectionstatechange = () => {
       if (this.closed) return
@@ -44,7 +50,7 @@ export class CallEngine {
       }
     }
     this.pc.onnegotiationneeded = () => {
-      if (this.handshakeComplete) void this.renegotiate()
+      if (this.handshakeComplete) this.requestNegotiation()
     }
   }
 
@@ -54,14 +60,17 @@ export class CallEngine {
       video: mode === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
     })
     this.localStream = media
-    media.getTracks().forEach((track) => this.pc.addTrack(track, media))
+    const audioTrack = media.getAudioTracks()[0]
+    if (audioTrack) this.pc.addTrack(audioTrack, media)
     if (mode === 'video') {
       const track = media.getVideoTracks()[0]
       if (track) {
         this.cameraTrack = track
         this.camEnabled = true
+        this.videoTransceiver = this.pc.addTransceiver(track, { streams: [this.localStream] })
       }
     }
+    this.syncLocalVideoTrack()
     return media
   }
 
@@ -72,6 +81,7 @@ export class CallEngine {
   }
 
   async acceptIncoming(offerSdp: string): Promise<string> {
+    this.ignoreOffer = false
     await this.pc.setRemoteDescription({ type: 'offer', sdp: offerSdp })
     await this.flushCandidates()
     const answer = await this.pc.createAnswer()
@@ -101,31 +111,29 @@ export class CallEngine {
 
   async setCamEnabled(enabled: boolean): Promise<void> {
     this.camEnabled = enabled
-    if (this.screenStream) return
-    const sender = this.getVideoSender()
+    if (this.screenStream) {
+      if (this.cameraTrack) this.cameraTrack.enabled = enabled
+      return
+    }
     if (enabled) {
       if (!this.cameraTrack) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
         this.cameraTrack = stream.getVideoTracks()[0] ?? null
-        if (this.cameraTrack) {
-          this.localStream.addTrack(this.cameraTrack)
-        }
       }
-      if (this.cameraTrack) {
-        this.cameraTrack.enabled = true
+      if (!this.cameraTrack) return
+      this.cameraTrack.enabled = true
+      if (!this.videoTransceiver) {
+        this.videoTransceiver = this.pc.addTransceiver(this.cameraTrack, { streams: [this.localStream] })
       }
-      if (sender) {
-        await sender.replaceTrack(this.cameraTrack)
-      } else if (this.cameraTrack) {
-        this.pc.addTrack(this.cameraTrack, this.localStream)
-      }
-      await this.renegotiate()
+      this.syncLocalVideoTrack()
+      await this.setVideoSource()
+      this.requestNegotiation()
       return
     }
-    if (sender && sender.track !== null) {
-      await sender.replaceTrack(null)
-      await this.renegotiate()
-    }
+    if (this.cameraTrack) this.cameraTrack.enabled = false
+    this.syncLocalVideoTrack()
+    await this.setVideoSource()
+    this.requestNegotiation()
   }
 
   async startScreenShare(): Promise<MediaStream> {
@@ -139,17 +147,15 @@ export class CallEngine {
       throw new Error('Не удалось захватить экран')
     }
     this.screenStream = stream
-    const sender = this.getVideoSender()
-    if (sender) {
-      await sender.replaceTrack(track)
-    } else {
-      this.pc.addTrack(track, this.localStream)
-    }
-    this.localStream.addTrack(track)
     track.addEventListener('ended', () => {
       if (this.screenStream === stream) void this.stopScreenShare()
     })
-    await this.renegotiate()
+    if (!this.videoTransceiver) {
+      this.videoTransceiver = this.pc.addTransceiver(track, { streams: [this.localStream] })
+    }
+    this.syncLocalVideoTrack()
+    await this.setVideoSource()
+    this.requestNegotiation()
     return stream
   }
 
@@ -157,21 +163,19 @@ export class CallEngine {
     const stream = this.screenStream
     if (!stream) return
     this.screenStream = null
-    const track = stream.getVideoTracks()[0]
-    if (track) this.localStream.removeTrack(track)
     stream.getTracks().forEach((t) => t.stop())
-    const sender = this.getVideoSender()
-    if (sender) {
-      await sender.replaceTrack(this.camEnabled ? this.cameraTrack : null)
-      await this.renegotiate()
-    }
+    this.syncLocalVideoTrack()
+    await this.setVideoSource()
+    this.requestNegotiation()
   }
 
   teardown(): void {
     if (this.closed) return
     this.closed = true
-    this.localStream.getTracks().forEach((track) => track.stop())
-    this.screenStream?.getTracks().forEach((track) => track.stop())
+    const tracks = new Set<MediaStreamTrack>(this.localStream.getTracks())
+    if (this.cameraTrack) tracks.add(this.cameraTrack)
+    this.screenStream?.getTracks().forEach((t) => tracks.add(t))
+    tracks.forEach((track) => track.stop())
     this.pc.getSenders().forEach((sender) => sender.track?.stop())
     this.pc.close()
   }
@@ -180,27 +184,112 @@ export class CallEngine {
     return this.localStream
   }
 
-  private getVideoSender(): RTCRtpSender | null {
-    return this.pc.getSenders().find((sender) => sender.track?.kind === 'video') ?? null
+  requestNegotiation(): void {
+    if (this.closed) return
+    this.negotiationNeeded = true
+    if (!this.negotiationScheduled) {
+      this.negotiationScheduled = true
+      queueMicrotask(() => void this.drainNegotiation())
+    }
+  }
+
+  private async drainNegotiation(): Promise<void> {
+    this.negotiationScheduled = false
+    if (this.closed) return
+    if (this.makingOffer || this.pc.signalingState !== 'stable') {
+      this.negotiationNeeded = true
+      return
+    }
+    if (!this.negotiationNeeded) return
+    this.negotiationNeeded = false
+    this.makingOffer = true
+    try {
+      await this.pc.setLocalDescription()
+      const sdp = this.pc.localDescription?.sdp ?? ''
+      if (sdp) this.onSignal({ type: 'offer', sdp })
+    } catch (err) {
+      this.negotiationNeeded = true
+      console.warn('Не удалось пересогласовать соединение', err)
+    } finally {
+      this.makingOffer = false
+      if (this.negotiationNeeded && this.pc.signalingState === 'stable') {
+        await this.drainNegotiation()
+      }
+    }
+  }
+
+  private async setVideoSource(): Promise<void> {
+    if (!this.videoTransceiver) return
+    if (this.screenStream) {
+      this.videoTransceiver.direction = 'sendrecv'
+      const screenTrack = this.screenStream.getVideoTracks()[0] ?? null
+      if (screenTrack) await this.videoTransceiver.sender.replaceTrack(screenTrack)
+      return
+    }
+    this.videoTransceiver.direction = this.camEnabled ? 'sendrecv' : 'recvonly'
+    if (this.cameraTrack) {
+      await this.videoTransceiver.sender.replaceTrack(this.cameraTrack)
+    }
+  }
+
+  private syncLocalVideoTrack(): void {
+    for (const track of this.localStream.getVideoTracks()) {
+      this.localStream.removeTrack(track)
+    }
+    let source: MediaStreamTrack | null = null
+    if (this.screenStream) {
+      source = this.screenStream.getVideoTracks()[0] ?? null
+    } else if (this.cameraTrack) {
+      source = this.cameraTrack
+    }
+    if (source) this.localStream.addTrack(source)
+  }
+
+  private updateRemoteStream(newTrack: MediaStreamTrack): void {
+    const existingSameKind = this.remoteStream.getTracks().find((t) => t.kind === newTrack.kind)
+    if (existingSameKind) {
+      const replacement = new MediaStream()
+      this.remoteStream.getTracks().forEach((t) => {
+        if (t.kind !== newTrack.kind) replacement.addTrack(t)
+      })
+      replacement.addTrack(newTrack)
+      this.remoteStream = replacement
+    } else {
+      this.remoteStream.addTrack(newTrack)
+    }
+    this.onRemoteStream(this.remoteStream)
   }
 
   private async handleOffer(sdp: string): Promise<void> {
-    if (this.makingOffer || this.pc.signalingState !== 'stable') return
+    const offerCollision = this.makingOffer || this.pc.signalingState !== 'stable'
+    this.ignoreOffer = !this.polite && offerCollision
+    if (this.ignoreOffer) return
+    if (this.pc.signalingState === 'have-local-offer') {
+      try {
+        await this.pc.setLocalDescription({ type: 'rollback' })
+      } catch (err) {
+        console.warn('Не удалось откатить локальный offer', err)
+      }
+    }
     await this.pc.setRemoteDescription({ type: 'offer', sdp })
     await this.flushCandidates()
     const answer = await this.pc.createAnswer()
     await this.pc.setLocalDescription(answer)
     this.onSignal({ type: 'answer', sdp: answer.sdp ?? '' })
+    if (this.negotiationNeeded) this.requestNegotiation()
   }
 
   private async handleAnswer(sdp: string): Promise<void> {
     await this.pc.setRemoteDescription({ type: 'answer', sdp })
     await this.flushCandidates()
+    this.ignoreOffer = false
     this.handshakeComplete = true
+    if (this.negotiationNeeded) this.requestNegotiation()
   }
 
   private async handleIce(candidate: RTCIceCandidateInit | null): Promise<void> {
     if (!candidate) return
+    if (this.ignoreOffer) return
     if (this.pc.remoteDescription === null) {
       this.pendingCandidates.push(candidate)
       return
@@ -221,19 +310,6 @@ export class CallEngine {
       } catch (err) {
         console.warn('Не удалось добавить ICE-кандидат', err)
       }
-    }
-  }
-
-  private async renegotiate(): Promise<void> {
-    if (this.closed || this.makingOffer || this.pc.signalingState !== 'stable') return
-    this.makingOffer = true
-    try {
-      await this.pc.setLocalDescription(await this.pc.createOffer())
-      this.onSignal({ type: 'offer', sdp: this.pc.localDescription?.sdp ?? '' })
-    } catch (err) {
-      console.warn('Не удалось пересогласовать соединение', err)
-    } finally {
-      this.makingOffer = false
     }
   }
 }

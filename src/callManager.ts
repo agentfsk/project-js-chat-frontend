@@ -5,6 +5,7 @@ import type {
   CallIncomingPayload,
   CallMode,
   CallRejectedPayload,
+  CallSignalData,
   CallSignalPayload,
   UserProfile,
 } from './types'
@@ -23,6 +24,7 @@ const ENDED_DISMISS_MS = 4_000
 
 let engine: CallEngine | null = null
 let pendingOfferSdp: string | null = null
+let pendingSignals: CallSignalData[] = []
 let ringTimeout: ReturnType<typeof setTimeout> | null = null
 let clearTimeoutHandle: ReturnType<typeof setTimeout> | null = null
 
@@ -55,6 +57,7 @@ function teardownEngine(): void {
     engine = null
   }
   pendingOfferSdp = null
+  pendingSignals = []
 }
 
 function endCall(error?: string): void {
@@ -63,9 +66,10 @@ function endCall(error?: string): void {
   scheduleClear()
 }
 
-function createEngine(): CallEngine {
+function createEngine(polite: boolean): CallEngine {
   teardownEngine()
   engine = new CallEngine({
+    polite,
     onSignal: (data) => {
       const state = useCallStore.getState()
       if (state.callId) void emitCallSignal(state.callId, data).catch(() => {})
@@ -115,7 +119,7 @@ export async function startCall(params: {
   const callId = crypto.randomUUID()
   state.beginOutgoing({ callId, channelId: params.channelId, mode: params.mode, peer: params.peer })
 
-  const localEngine = createEngine()
+  const localEngine = createEngine(false)
   try {
     await localEngine.startLocalMedia(params.mode)
   } catch {
@@ -159,7 +163,7 @@ export async function accept(): Promise<void> {
   const offerSdp = pendingOfferSdp
   if (!callId || !offerSdp) return
 
-  const localEngine = createEngine()
+  const localEngine = createEngine(true)
   try {
     await localEngine.startLocalMedia(mode)
   } catch {
@@ -167,6 +171,11 @@ export async function accept(): Promise<void> {
     return
   }
   state.setStreams({ localStream: localEngine.getLocalStream(), remoteStream: null })
+
+  for (const data of pendingSignals) {
+    void localEngine.handleSignal(data).catch(() => {})
+  }
+  pendingSignals = []
 
   let answer: string
   try {
@@ -249,6 +258,7 @@ export function onCallIncoming(payload: CallIncomingPayload): void {
   if (state.phase === 'calling' || state.phase === 'ringing' || state.phase === 'active') return
   cancelClearTimeout()
   pendingOfferSdp = payload.sdp
+  pendingSignals = []
   state.beginIncoming(payload)
   startRingTimeout(payload.callId)
 }
@@ -266,8 +276,12 @@ export function onCallAnswered(payload: CallAnsweredPayload): void {
 
 export function onCallSignal(payload: CallSignalPayload): void {
   const state = useCallStore.getState()
-  if (state.callId !== payload.callId || !engine) return
+  if (state.callId !== payload.callId) return
   if (state.phase === 'idle' || state.phase === 'ended') return
+  if (!engine) {
+    pendingSignals.push(payload.data)
+    return
+  }
   engine.handleSignal(payload.data).catch(() => {})
 }
 
