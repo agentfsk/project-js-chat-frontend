@@ -37,7 +37,7 @@ The system SHALL deliver attachment metadata with the message without a page ref
 - **THEN** the message and its attachment metadata appear in that channel only for the two participants
 
 ### Requirement: Render message attachments
-The system SHALL render an attachment according to its type: images as a preview, other supported types as a clickable download link showing the filename and size. An image preview SHALL never exceed the width available to its message and SHALL preserve its aspect ratio.
+The system SHALL render an attachment according to its type: images as a preview, other supported types as a clickable download link showing the filename and size. An image preview SHALL never exceed the width available to its message and SHALL preserve its aspect ratio. An image preview SHALL occupy its final size from the moment the message is rendered, before the image data has loaded, and the appearance of the image SHALL NOT move any message other than the one it belongs to.
 
 #### Scenario: Image preview
 - **WHEN** a received message has an image attachment
@@ -54,6 +54,22 @@ The system SHALL render an attachment according to its type: images as a preview
 #### Scenario: Long sender name does not displace the message content
 - **WHEN** a message from a sender with a long name carries an image attachment on a narrow screen
 - **THEN** the sender name is truncated with an ellipsis and the image preview remains fully visible inside the message
+
+#### Scenario: A slow-loading image does not displace the conversation
+- **WHEN** a message with an image attachment is rendered and the image data has not finished loading
+- **THEN** the message already occupies the space the image will need, and no message above or below it changes position
+
+#### Scenario: An image without known dimensions still reserves space
+- **WHEN** a message carries an image attachment whose pixel dimensions are unknown
+- **THEN** the message reserves a placeholder box before the image loads, so the conversation does not shift when the image appears
+
+#### Scenario: Loading images while reading history do not move the view
+- **WHEN** images further up the history finish loading while the reader has scrolled away from the newest message
+- **THEN** the reader's position in the conversation is preserved and the view is not moved to the newest message
+
+#### Scenario: Loading images while at the newest message keep it in view
+- **WHEN** an image finishes loading in the newest message while the reader is already at the bottom of the conversation
+- **THEN** the newest message remains fully visible after the image appears
 
 ### Requirement: Authenticated real-time connections
 The system SHALL require a valid token on every socket connection and SHALL deliver events only for channels the connected user can access: public channels for everyone, private channels only for their two participants. A connection without a valid token SHALL be rejected.
@@ -132,14 +148,3 @@ The system SHALL let a participant send a message as a reply to a message they c
 #### Scenario: Reject reply to an inaccessible message
 - WHEN a sender replies to a message in a channel they cannot access
 - THEN the reply is rejected with an error and no message is created
-
-### Requirement: Avatar next to the nickname in the message header
-The system SHALL render the author's avatar next to their nickname in the header of every message, using the stored avatar when set and an initial-based placeholder otherwise, in both public channels and direct messages.
-
-#### Scenario: Avatar of a user with a picture
-- WHEN a message is rendered in a channel and the author has an avatar set
-- THEN the message header shows the author's avatar image next to the nickname
-
-#### Scenario: Avatar placeholder without a picture
-- WHEN a message is rendered in a channel and the author has no avatar
-- THEN the message header shows an initial-based placeholder next to the nickname
