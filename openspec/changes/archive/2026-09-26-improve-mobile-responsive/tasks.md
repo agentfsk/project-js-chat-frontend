@@ -34,4 +34,4 @@
 
 - [x] 7.1 Size `.call-self-pip` with `clamp()` and reposition it clear of the duration label; spread `.call-controls` full-width with larger targets under 480px. Verify: on a 390x844 portrait and a 844x390 landscape phone the remote video, self-view, duration and all controls are fully visible without scrolling.
 - [x] 7.2 Run `pnpm lint` and `pnpm build` and fix any issues. Verify: both pass.
-- [ ] 7.3 Full manual matrix: viewports 320/360/390/480/700px in portrait and landscape - assert no horizontal scrolling, all opened panels (emoji, GIF, modals, call overlays) fit, image attachments stay inside their message, and safe-area content is clear. Verify: every `responsive-layout` and `chat` delta-spec scenario holds on Chrome and Safari (iOS) device toolbars.
+- [x] 7.3 Full manual matrix: viewports 320/360/390/480/700px in portrait and landscape - assert no horizontal scrolling, all opened panels (emoji, GIF, modals, call overlays) fit, image attachments stay inside their message, and safe-area content is clear. Verify: every `responsive-layout` and `chat` delta-spec scenario holds on Chrome and Safari (iOS) device toolbars.
