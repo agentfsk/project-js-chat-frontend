@@ -29,9 +29,21 @@ The system SHALL lay out the chat page as a mobile layout when the viewport is n
 - **WHEN** the user opens the emoji picker, a GIF picker, a modal, or the call overlays on a narrow screen
 - **THEN** the panel fits fully within the viewport without horizontal scrolling or clipped content
 
+#### Scenario: Modals with long content fit short viewports
+- **WHEN** the user opens the GIF picker or another modal in a short viewport, such as a phone held in landscape
+- **THEN** the modal never exceeds the viewport height, the modal's scrollable region shrinks to the available space, and the close control and action buttons stay visible without the panel being cut off
+
+#### Scenario: Transient overlays stay inside the viewport
+- **WHEN** a call toast or a reaction picker appears near a screen edge on a narrow screen
+- **THEN** the overlay stays fully within the viewport with its text wrapped or truncated rather than extending past the edge
+
 #### Scenario: Content avoids device notches and gesture bars
 - **WHEN** the app is open on a device with screen insets (notch or gesture bar) in portrait or landscape
-- **THEN** the header, message composer, drawer, and call overlay keep their content clear of the insets
+- **THEN** the header, message composer, message list, drawer, and call overlay keep their content clear of the insets
+
+#### Scenario: Message bubbles clear the notch in landscape
+- **WHEN** a notched phone is held in landscape and shows a message thread
+- **THEN** no message bubble, avatar, or reaction control is drawn beneath the side notch, because in landscape the insets apply to the left and right edges
 
 #### Scenario: Touch targets are large enough on phones
 - **WHEN** the user interacts with composer buttons, drawer items, or call controls on a narrow screen
