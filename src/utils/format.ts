@@ -12,3 +12,13 @@ export function formatBytes(bytes: number): string {
   const rounded = Math.round(value * 10) / 10
   return `${rounded} ${units[unitIndex]}`
 }
+
+// A message that carries no usable timestamp renders without a time rather than
+// with a wrong one, so callers can rely on an empty string meaning "unknown".
+export function formatTime(iso: string | undefined): string {
+  if (!iso) return ''
+  const parsed = new Date(iso)
+  const timestamp = parsed.getTime()
+  if (Number.isNaN(timestamp)) return ''
+  return parsed.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}

@@ -31,6 +31,8 @@ export type Attachment = {
   mime: string
   size: number
   url: string
+  width?: number
+  height?: number
 }
 
 export type MessageReaction = {
@@ -52,11 +54,22 @@ export type Message = {
   channelId: number
   username: string
   userId: number
+  createdAt?: string
   edited: boolean
   pinned: boolean
   attachment?: Attachment
   reactions?: MessageReaction[]
   replyTo?: MessageReplyTo
+}
+
+export type ChannelReadEntry = {
+  channelId: number
+  lastReadAt: string
+}
+
+export type ReadState = {
+  firstSeenAt: string
+  lastReadAtByChannel: ChannelReadEntry[]
 }
 
 export type CallMode = 'audio' | 'video'

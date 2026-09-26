@@ -9,6 +9,8 @@
   --danger: #f87171;
   --on-accent: #1c1e26;
   --hover: rgba(255, 255, 255, 0.04);
+  --bubble-in: #23252f;
+  --bubble-out: rgba(192, 132, 252, 0.18);
 
   --composer-h: 40px;
 
@@ -42,6 +44,8 @@
   --danger: #f87171;
   --on-accent: #ffffff;
   --hover: rgba(0, 0, 0, 0.05);
+  --bubble-in: #ffffff;
+  --bubble-out: rgba(124, 58, 237, 0.12);
 
   color-scheme: light;
 }
@@ -354,6 +358,104 @@ textarea {
   color: var(--text-h);
 }
 
+.unread-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sidebar-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* The stack sits above the chat and stops short of the composer, so a burst of
+   notices can never cover the field the reader is typing into. */
+.toast-stack {
+  position: fixed;
+  top: calc(var(--safe-top) + 12px);
+  right: calc(var(--safe-right) + 12px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(320px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+
+  &:hover {
+    border-color: var(--accent);
+  }
+}
+
+.toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toast-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.toast-sender {
+  color: var(--text-h);
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast-title {
+  color: var(--accent);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast-preview {
+  color: var(--text);
+  font-size: 13px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .channel-item.dm-noncontact {
   border: 1px dashed var(--border);
 
@@ -489,19 +591,71 @@ textarea {
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  /* Rows of one group sit tight together; the gap is spent only between groups
+     so a run reads as a single block. */
+  gap: 2px;
+}
+
+.message.group-end {
+  margin-bottom: 8px;
 }
 
 .message {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  align-self: flex-start;
-  max-width: 70%;
+  max-width: 100%;
   min-width: 0;
+}
+
+.message.own {
+  flex-direction: row-reverse;
+}
+
+.message-avatar-cell {
+  flex: 0 0 28px;
+  width: 28px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  align-self: flex-end;
+}
+
+.message-bubble {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: min(70%, 560px);
+  padding: 6px 10px;
+  border-radius: 14px;
+}
+
+.message.incoming .message-bubble {
+  background: var(--bubble-in);
+}
+
+.message.own .message-bubble {
+  background: var(--bubble-out);
+}
+
+/* The tail corner tightens on the avatar side, so a run of messages reads as one
+   block with a single rounded tail at its end. */
+.message.incoming.group-start .message-bubble {
+  border-top-left-radius: 6px;
+}
+
+.message.incoming.group-end .message-bubble {
+  border-bottom-left-radius: 6px;
+}
+
+.message.own.group-start .message-bubble {
+  border-top-right-radius: 6px;
+}
+
+.message.own.group-end .message-bubble {
+  border-bottom-right-radius: 6px;
 }
 
 .message-user {
@@ -511,6 +665,30 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+}
+
+.message-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.message-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.message-time {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1;
 }
 
 .message-content {
@@ -529,18 +707,17 @@ textarea {
 
 .message-attachment-image {
   display: block;
-  min-width: 0;
+  align-self: center;
   max-width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
 
   img {
     display: block;
-    width: auto;
-    height: auto;
-    max-width: min(260px, 100%);
-    max-height: 260px;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     border-radius: 8px;
-    border: 1px solid var(--border);
   }
 }
 
@@ -580,12 +757,12 @@ textarea {
   min-width: 0;
 }
 
-.message.pinned {
-  border-color: var(--accent);
+/* Inset shadows keep the highlight from shifting the bubble by a border width. */
+.message.pinned .message-bubble {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-.message.editing {
-  border-color: var(--accent);
+.message.editing .message-bubble {
   box-shadow: 0 0 0 1px var(--accent);
 }
 

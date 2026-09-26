@@ -1,15 +1,32 @@
 import { io, type Socket } from 'socket.io-client'
 import { BACKEND_URL } from './config'
 import { useChatStore } from './store/chat'
+import { useUnreadStore } from './store/unread'
 import { useUsersStore } from './store/users'
 import { useAuthStore } from './store/auth'
+import { attachmentKind, shouldAnnounce, toastPreview, useToastStore } from './store/toasts'
 import * as callManager from './callManager'
-import type { Attachment, CallMode, CallSignalData, Channel, UserProfile } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile } from './types'
 
 type AckPayload = { status: string; message?: string; data?: unknown }
 
 let socket: Socket | null = null
 let connected = false
+
+// A notice stands in for the conversation the reader is not looking at.
+function announceMessage(message: Message) {
+  const me = useUsersStore.getState().me
+  const currentChannelId = useChatStore.getState().currentChannelId
+  if (!shouldAnnounce(message, me?.id ?? null, currentChannelId)) return
+  useToastStore.getState().push({
+    channelId: message.channelId,
+    sender: message.username,
+    preview: toastPreview(
+      message.body,
+      message.attachment ? attachmentKind(message.attachment.mime) : null,
+    ),
+  })
+}
 
 export function connectSocket(): Socket | null {
   if (connected) return socket
@@ -23,6 +40,7 @@ export function connectSocket(): Socket | null {
       useChatStore.getState().addChannel(payload.channel)
     }
     useChatStore.getState().addMessage(payload)
+    announceMessage(payload)
   })
   socket.on('messageEdited', (message) => {
     useChatStore.getState().updateMessage(message)
@@ -35,6 +53,11 @@ export function connectSocket(): Socket | null {
   })
   socket.on('messageReacted', (message) => {
     useChatStore.getState().updateMessage(message)
+  })
+  // Another window of the same account read this channel; mirror the read point
+  // so the badge clears here too.
+  socket.on('channelRead', ({ channelId, lastReadAt }) => {
+    useUnreadStore.getState().markChannelRead(Number(channelId), String(lastReadAt))
   })
   socket.on('newChannel', (channel) => {
     useChatStore.getState().addChannel(channel)
@@ -157,6 +180,14 @@ export function emitPinMessage(messageId: number, pinned: boolean): Promise<void
 
 export function emitToggleReaction(messageId: number, emoji: string): Promise<void> {
   return emitWithAck<void>('toggleReaction', { messageId, emoji })
+}
+
+export function emitReadChannel(channelId: number): Promise<void> {
+  // Optimistic: the reader's own badge should disappear on the click, not after
+  // a round trip. The server echo confirms the point for other sessions.
+  const now = new Date().toISOString()
+  useUnreadStore.getState().markChannelRead(channelId, now)
+  return emitWithAck<void>('readChannel', { channelId })
 }
 
 export function emitCallOffer(payload: {

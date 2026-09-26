@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useChatStore } from '../store/chat'
+import { countUnread, useChannelUnread, useUnreadStore } from '../store/unread'
 import { useUsersStore } from '../store/users'
 import { emitNewChannel, emitRenameChannel, emitRemoveChannel } from '../socket'
 import { searchUsers } from '../api/users'
@@ -8,6 +9,7 @@ import Avatar from './Avatar'
 import ProfileModal from './ProfileModal'
 import ChannelInputModal from './ChannelInputModal'
 import RemoveChannelModal from './RemoveChannelModal'
+import UnreadBadge from './UnreadBadge'
 
 type Tab = 'private' | 'channels'
 
@@ -28,6 +30,8 @@ type ChannelRowProps = {
 
 function ChannelRow({ channel, active, onSelect }: ChannelRowProps) {
   const setError = useChatStore((state) => state.setError)
+  const myId = useUsersStore((state) => state.me?.id ?? null)
+  const unread = useChannelUnread(channel.id, myId)
   const [renaming, setRenaming] = useState(false)
   const [removing, setRemoving] = useState(false)
 
@@ -53,6 +57,7 @@ function ChannelRow({ channel, active, onSelect }: ChannelRowProps) {
     <li className={`channel-item${active ? ' active' : ''}`}>
       <button type="button" className="channel-name" onClick={onSelect}>
         {channel.name}
+        <UnreadBadge count={unread} />
       </button>
       {channel.removable && (
         <span className="channel-actions">
@@ -98,6 +103,7 @@ type DmRowProps = {
 
 function DmRow({ channel, active, onSelect }: DmRowProps) {
   const me = useUsersStore((state) => state.me)
+  const unread = useChannelUnread(channel.id, me?.id ?? null)
   const profiles = useUsersStore((state) => state.profiles)
   const contacts = useUsersStore((state) => state.contacts)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -118,6 +124,7 @@ function DmRow({ channel, active, onSelect }: DmRowProps) {
       <button type="button" className="channel-name" onClick={onSelect}>
         <span className="dm-name">{peer?.username ?? channel.name}</span>
         {!isContact && <span className="dm-badge">не в контактах</span>}
+        <UnreadBadge count={unread} />
       </button>
       {profileOpen && peer && <ProfileModal profile={peer} onClose={() => setProfileOpen(false)} />}
     </li>
@@ -174,6 +181,22 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
     return () => clearTimeout(timer)
   }, [query])
 
+  // Tab totals sum every chat the tab lists, non-contacts included, so the
+  // sidebar never hides unread work behind a tab the user has not opened.
+  const firstSeenAt = useUnreadStore((state) => state.firstSeenAt)
+  const lastReadAtByChannel = useUnreadStore((state) => state.lastReadAtByChannel)
+  const allMessages = useChatStore((state) => state.messages)
+  const myId = me?.id ?? null
+
+  const sumUnread = (list: Channel[]): number =>
+    list.reduce(
+      (sum, channel) => sum + countUnread(firstSeenAt, lastReadAtByChannel[channel.id], allMessages, channel.id, myId),
+      0,
+    )
+
+  const privateTotal = sumUnread(privateChannels)
+  const channelsTotal = sumUnread(publicChannels)
+
   const handleCreate = async (name: string) => {
     try {
       await emitNewChannel(name.trim())
@@ -192,6 +215,7 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
           onClick={() => setTab('private')}
         >
           Личные
+          <UnreadBadge count={privateTotal} />
         </button>
         <button
           type="button"
@@ -199,6 +223,7 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
           onClick={() => setTab('channels')}
         >
           Каналы
+          <UnreadBadge count={channelsTotal} />
         </button>
       </div>
 

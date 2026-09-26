@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { fetchData } from '../api/data'
 import { ApiError } from '../api/client'
@@ -7,9 +7,11 @@ import {
   disconnectSocket,
   emitDeleteMessage,
   emitPinMessage,
+  emitReadChannel,
   emitToggleReaction,
 } from '../socket'
 import { useChatStore, selectActiveChannelMessages, selectPinnedMessage } from '../store/chat'
+import { useUnreadStore } from '../store/unread'
 import { useUsersStore } from '../store/users'
 import { useAuthStore } from '../store/auth'
 import { useCallStore } from '../store/calls'
@@ -25,6 +27,8 @@ import Avatar from '../components/Avatar'
 import CallButtons from '../components/CallButtons'
 import IncomingCallOverlay from '../components/IncomingCallOverlay'
 import ActiveCallOverlay from '../components/ActiveCallOverlay'
+import NotificationToast from '../components/NotificationToast'
+import { useToastStore } from '../store/toasts'
 import type { CallMode, Message } from '../types'
 
 const MOBILE_QUERY = '(max-width: 700px)'
@@ -34,6 +38,7 @@ function ChatPage() {
   const currentChannelId = useChatStore((state) => state.currentChannelId)
   const error = useChatStore((state) => state.error)
   const setInitialData = useChatStore((state) => state.setInitialData)
+  const setActiveChannel = useChatStore((state) => state.setActiveChannel)
   const username = useAuthStore((state) => state.username) ?? ''
   const logout = useAuthStore((state) => state.clear)
 
@@ -56,6 +61,7 @@ function ChatPage() {
     void fetchData()
       .then((data) => {
         setInitialData(data.channels, data.messages, data.currentChannelId)
+        useUnreadStore.getState().setReadState(data.readState)
         useUsersStore.getState().setInitialData(
           data.me,
           data.contacts,
@@ -89,6 +95,32 @@ function ChatPage() {
       messageListRef.current?.scrollToMessage(targetId)
     }
   }, [editingMessageId, replyingMessageId])
+
+  // Reading is "this channel is open and this tab is in front". A failed ack
+  // only means the marker did not persist; the next open or refocus retries.
+  const markChannelRead = useCallback(() => {
+    if (!currentChannelId) return
+    emitReadChannel(currentChannelId).catch(() => undefined)
+  }, [currentChannelId])
+
+  useEffect(() => {
+    markChannelRead()
+  }, [markChannelRead])
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (document.hasFocus()) markChannelRead()
+    }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [markChannelRead])
+
+  const seenMessageCountRef = useRef(0)
+  useEffect(() => {
+    const grew = messages.length > seenMessageCountRef.current
+    seenMessageCountRef.current = messages.length
+    if (grew && document.hasFocus()) markChannelRead()
+  }, [messages, markChannelRead])
 
   const activeChannel = channels.find((channel) => channel.id === currentChannelId) ?? null
   const pendingRequest =
@@ -219,6 +251,13 @@ function ChatPage() {
         </main>
       </div>
       {editingProfile && <EditProfileModal onClose={() => setEditingProfile(false)} />}
+      <NotificationToast
+        onOpenChannel={(channelId) => {
+          setActiveChannel(channelId)
+          setDrawerOpen(false)
+          useToastStore.getState().dismissChannel(channelId)
+        }}
+      />
       <IncomingCallOverlay />
       <ActiveCallOverlay />
     </div>

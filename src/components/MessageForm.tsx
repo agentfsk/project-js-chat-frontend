@@ -7,6 +7,7 @@ import {
   uploadFile,
 } from '../api/uploads'
 import { formatBytes } from '../utils/format'
+import { probeFileSize } from '../utils/imageSize'
 import GifPicker from './GifPicker'
 import type { GiphyGif } from '../api/giphy'
 import type { Attachment, Message } from '../types'
@@ -103,7 +104,9 @@ function MessageForm({
 
     setUploading(true)
     try {
-      const attachment = file ? await uploadFile(file) : undefined
+      const size = file?.type.startsWith('image/') ? await probeFileSize(file) : null
+      const uploaded = file ? await uploadFile(file) : undefined
+      const attachment = uploaded && size ? { ...uploaded, ...size } : uploaded
       await emitNewMessage(body.trim(), channelId, username, attachment, replyingMessage?.id)
       setBody('')
       setFile(null)
@@ -134,11 +137,16 @@ function MessageForm({
 
   const handleGifSelect = async (gif: GiphyGif) => {
     setPickerOpen(false)
+    // GIPHY reports the downsized variant's own box; send it along so the
+    // receiver reserves the final size without decoding the file first.
+    const width = Number(gif.images.downsized.width)
+    const height = Number(gif.images.downsized.height)
     const attachment: Attachment = {
       name: gif.title || 'GIF',
       mime: 'image/gif',
       size: Number(gif.images.downsized.size ?? 0),
       url: gif.images.downsized.url,
+      ...(width > 0 && height > 0 ? { width, height } : {}),
     }
     try {
       await emitNewMessage('', channelId, username, attachment, replyingMessage?.id)
