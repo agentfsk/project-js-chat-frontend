@@ -32,6 +32,10 @@ The system SHALL let the user send a contact request to any other user from that
 - **WHEN** a pending request to the same user already exists
 - **THEN** the system does not create a second request and the profile shows the request as already sent
 
+#### Scenario: The outgoing request is not a dead end
+- **WHEN** the user has sent a pending contact request to a peer and opens the private chat with that peer from the «личные» section
+- **THEN** the chat title and sidebar entry resolve the peer's real nickname and avatar from the outgoing request, and the peer's profile still shows the request as already sent
+
 ### Requirement: Recipient accepts or declines a contact request
 The system SHALL show the recipient of a contact request a chat with the sender and a banner above it: "Пользователь \<nickname\> хочет добавить вас в контакты" with accept and decline actions. The banner SHALL appear regardless of whether a chat between the two already existed. Accepting SHALL make the contact mutual for both users; declining SHALL remove the request.
 

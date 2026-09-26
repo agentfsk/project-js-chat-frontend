@@ -17,6 +17,10 @@ The system SHALL show two tabs in the sidebar — «личные» and «кан�
 - **WHEN** the user selects the «личные» tab
 - **THEN** the sidebar shows the user's private chats labelled with the peer's nickname and avatar
 
+#### Scenario: A non-contact peer's chat is labelled with the real nickname
+- **WHEN** the user's «личные» list contains a private chat with a peer who is not yet an accepted contact (the sender of a pending incoming contact request, or the recipient of the user's pending outgoing contact request)
+- **THEN** the chat entry and the open chat's title show the peer's real nickname and avatar with a «не в контактах» marker, rather than a generated placeholder name
+
 ### Requirement: Start a private chat
 The system SHALL let the user start (or reopen) a one-to-one private chat with any other user, either from that user's profile or from an accepted contact, and SHALL reuse the same private chat for the pair instead of creating duplicates.
 

@@ -111,3 +111,7 @@ The system SHALL inform the caller when a call cannot connect or is not answered
 #### Scenario: Peer declines
 - **WHEN** the peer declines an incoming call
 - **THEN** the caller is informed that the peer declined the call
+
+#### Scenario: Connection drops during a call
+- **WHEN** either participant's connection drops (for example, the page is reloaded or the browser is closed) while a call is ringing or active
+- **THEN** the call ends on both sides, the interrupted participant's call UI closes, and the remaining peer is no longer busy so a new call can be started immediately

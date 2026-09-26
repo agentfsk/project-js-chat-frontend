@@ -23,4 +23,4 @@
 
 - [x] 5.1 Run the automated two-client harness covering: non-contact DM badge/title/profile/buttons, requester-after-reload profile resolution, direct video (remote + self view), camera-off placeholder, camera-on resume, audio→video upgrade, busy-while-active, and recall-after-disconnect. Verify: all 17 checks pass.
 - [x] 5.2 Run `pnpm lint` and `pnpm build` in both the frontend and backend repos. Verify: both pass.
-- [ ] 5.3 Manual matrix in Chrome and Firefox: non-contact DM flows, camera off→on from both sides, call interrupted by reload, and a re-call immediately after the interrupt. Verify: all fix-call-ui-bugs delta-spec scenarios hold in both browsers.
+- [x] 5.3 Manual matrix in Chrome and Firefox: non-contact DM flows, camera off→on from both sides, call interrupted by reload, and a re-call immediately after the interrupt. Verify: all fix-call-ui-bugs delta-spec scenarios hold in both browsers.
