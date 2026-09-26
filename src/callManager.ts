@@ -220,15 +220,27 @@ export async function toggleMic(): Promise<void> {
   const next = !state.micOn
   engine.setMicEnabled(next)
   state.setMic(next)
+  state.setError(null)
 }
 
 export async function toggleCam(): Promise<void> {
   const state = useCallStore.getState()
   if (state.phase !== 'active' || !engine) return
   const next = !state.camOn
+  if (next) state.setError(null)
   try {
     await engine.setCamEnabled(next)
-  } catch {
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : ''
+    const message =
+      name === 'NotAllowedError'
+        ? 'Доступ к камере запрещён — разрешите его в настройках браузера'
+        : name === 'NotReadableError'
+          ? 'Камера сейчас недоступна — она может быть занята другим приложением'
+          : name === 'NotFoundError'
+            ? 'Камера не найдена на этом устройстве'
+            : 'Не удалось включить камеру'
+    state.setError(message)
     return
   }
   state.setCam(next)
@@ -240,8 +252,10 @@ export async function startShare(): Promise<void> {
   try {
     await engine.startScreenShare()
   } catch {
+    state.setError('Не удалось начать демонстрацию экрана')
     return
   }
+  state.setError(null)
   state.setScreen(true)
 }
 
@@ -253,6 +267,7 @@ export async function stopShare(): Promise<void> {
   } catch {
     return
   }
+  state.setError(null)
   state.setScreen(false)
 }
 

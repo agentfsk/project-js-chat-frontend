@@ -31,6 +31,7 @@ export type CallState = {
   setScreen: (on: boolean) => void
   setRemoteVideo: (on: boolean) => void
   end: (error?: string) => void
+  setError: (error: string | null) => void
   clear: () => void
 }
 
@@ -83,5 +84,6 @@ export const useCallStore = create<CallState>((set) => ({
   setScreen: (on) => set({ screenOn: on }),
   setRemoteVideo: (on) => set({ remoteVideo: on }),
   end: (error) => set({ phase: 'ended', error: error ?? null }),
+  setError: (error) => set({ error }),
   clear: () => set({ ...initial }),
 }))

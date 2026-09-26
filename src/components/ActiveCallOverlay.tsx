@@ -191,6 +191,11 @@ function ActiveCallOverlay() {
           📵
         </button>
       </div>
+      {error && (
+        <div className="call-error" role="status">
+          {error}
+        </div>
+      )}
     </div>
   )
 }

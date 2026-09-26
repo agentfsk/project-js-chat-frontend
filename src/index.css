@@ -1178,6 +1178,13 @@ textarea {
   }
 }
 
+.call-error {
+  margin-top: 8px;
+  text-align: center;
+  color: #f87171;
+  font-size: 13px;
+}
+
 .call-overlay {
   position: fixed;
   inset: 0;
