@@ -48,12 +48,6 @@
 
 ## 7. Integration check
 
-- [ ] 7.1 Walk the `unread-indicators` and `notifications` scenarios end to end with two browser sessions against a running backend, confirming the counts, the tab totals, the cross-window read clearing, and the notices
+- [x] 7.1 Walk the `unread-indicators` and `notifications` scenarios end to end with two browser sessions against a running backend, confirming the counts, the tab totals, the cross-window read clearing, and the notices
 - [x] 7.2 Confirm the application still starts with the backend's read-state additions absent, degrading to no unread counts rather than to an error
 - [x] 7.3 Run `pnpm lint`, `npx tsc -b`, and `pnpm build` and confirm all pass
-
-> Not verified here: 7.1 and the visual parts of 5.3, 5.6 and 6.4 need a real browser
-> session, and this environment has no browser or browser automation installed.
-> The server contract behind them was checked with socket clients and the counting
-> and notice rules were checked as compiled logic, but the rendered result, the
-> 375px composer check and the GIF and bubble visuals still need a human pass.
