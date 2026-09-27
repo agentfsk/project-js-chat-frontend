@@ -850,70 +850,6 @@ textarea {
   line-height: 1.2;
 }
 
-.reaction-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1;
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--accent);
-    color: var(--text-h);
-  }
-}
-
-.reaction-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 20;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  max-width: min(220px, calc(100vw - 2 * var(--safe-left) - 24px));
-  padding: 8px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-}
-
-.reaction-popover.flip-up {
-  top: auto;
-  bottom: calc(100% + 6px);
-}
-
-.reaction-popover-item {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  font-size: 22px;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--accent-bg);
-  }
-}
-
-.reaction-popover-item.active {
-  background: var(--accent-bg);
-  box-shadow: 0 0 0 1px var(--accent);
-}
-
 .message-form.editing {
   border-top-color: var(--accent);
 }
@@ -972,10 +908,77 @@ textarea {
   white-space: nowrap;
 }
 
-.message-context-menu {
+/* The wrapper is the single positioned box for the context menu: it owns the
+   pointer-derived coordinates and the width, so the reaction strip and the
+   actions bubble below it are always exactly as wide as each other. The width
+   has to be stated rather than derived from the content, because a child with
+   overflow-x: auto still contributes its full content width to the parent's
+   max-content size. */
+.message-context-menu-wrap {
+  --menu-w: 180px;
   position: fixed;
   z-index: 30;
-  min-width: 180px;
+  width: var(--menu-w);
+  display: flex;
+  flex-direction: column;
+  /* The visible gap between the reaction strip and the actions bubble. */
+  gap: 6px;
+}
+
+/* The reaction strip reads as a second part of the same menu, so it carries the
+   same surface as the actions bubble. It scrolls horizontally because the set is
+   larger than the strip; the set size is chosen so that at rest a reaction is
+   always cut off at the right edge, which is the hint that there is more. */
+.context-menu-reactions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px;
+  overflow-x: auto;
+  /* Claim horizontal pans here so a diagonal drag on a phone scrolls the strip
+     rather than the conversation it sits inside. */
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  /* The hint that the strip continues. The mask is on the scroll container, not
+     on a child, so it stays pinned to the right edge instead of scrolling away
+     with the content. It fades rather than clips, so the cut-off reaction is
+     still hit-testable. -webkit- is required for Safari on iOS. */
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 82%, rgba(0, 0, 0, 0.5) 100%);
+  mask-image: linear-gradient(to right, #000 0%, #000 82%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+.context-menu-reaction {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-bg);
+  }
+}
+
+.context-menu-reaction.active {
+  background: var(--accent-bg);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.message-context-menu {
+  width: 100%;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -1584,13 +1587,19 @@ textarea {
     min-width: 0;
   }
 
-  .message-context-menu {
+  /* The positioning lives on the wrapper, not on the actions bubble, so the
+     reaction strip travels with the menu instead of being placed on its own. */
+  .message-context-menu-wrap {
     left: 12px !important;
     right: 12px;
     top: auto !important;
     bottom: calc(12px + var(--safe-bottom));
     width: auto;
     max-width: none;
+  }
+
+  .message-context-menu {
+    position: static;
   }
 
   .message-context-menu-item {
@@ -1653,12 +1662,10 @@ textarea {
     min-height: 40px;
   }
 
-  .reaction-add {
-    min-width: 40px;
-    height: 40px;
-  }
-
-  .reaction-popover-item {
+  /* The strip is the reaction picker that the popover used to be, so it keeps
+     the same touch-target floor. This is the selector that satisfies the
+     tap-target scenario in responsive-layout. */
+  .context-menu-reaction {
     width: 40px;
     height: 40px;
   }

@@ -3,7 +3,6 @@ import type { Channel, Message, MessageReaction, UserProfile } from '../types'
 import { formatBytes, formatTime } from '../utils/format'
 import { resolveMediaUrl } from '../utils/mediaUrl'
 import { canDeleteMessage, canEditMessage, canPinMessage } from '../utils/permissions'
-import { REACTION_EMOJIS } from '../data/emoji'
 import { useUsersStore } from '../store/users'
 import Avatar from './Avatar'
 import MessageContextMenu, { type MessageMenuAction } from './MessageContextMenu'
@@ -147,8 +146,6 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
   const longPressHandled = useRef(false)
   const longPressStart = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const [menu, setMenu] = useState<{ message: Message; x: number; y: number } | null>(null)
-  const [reactionFor, setReactionFor] = useState<number | null>(null)
-  const reactionPopoverRef = useRef<HTMLDivElement>(null)
   const profiles = useUsersStore((state) => state.profiles)
 
   const scrollToMessage = (id: number) => {
@@ -161,41 +158,6 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages])
-
-  useEffect(() => {
-    if (reactionFor === null) return
-    const popover = reactionPopoverRef.current
-    const list = listRef.current
-    if (popover && list) {
-      const popoverRect = popover.getBoundingClientRect()
-      const listRect = list.getBoundingClientRect()
-      popover.classList.toggle('flip-up', popoverRect.bottom > listRect.bottom)
-    }
-  }, [reactionFor])
-
-  useEffect(() => {
-    if (reactionFor === null) return
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Element | null
-      if (target && (target.closest('[data-reaction-popover]') || target.closest('[data-reaction-toggle]'))) {
-        return
-      }
-      setReactionFor(null)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setReactionFor(null)
-    }
-    const handleScroll = () => setReactionFor(null)
-
-    window.addEventListener('pointerdown', handlePointerDown)
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('scroll', handleScroll, true)
-    return () => {
-      window.removeEventListener('pointerdown', handlePointerDown)
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('scroll', handleScroll, true)
-    }
-  }, [reactionFor])
 
   useEffect(() => {
     const el = listRef.current
@@ -336,36 +298,6 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
                         <span className="reaction-chip-count">{chip.count}</span>
                       </button>
                     ))}
-                    <button
-                      type="button"
-                      data-reaction-toggle
-                      className="reaction-add"
-                      title="Добавить реакцию"
-                      onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}
-                    >
-                      +
-                    </button>
-                    {reactionFor === message.id && (
-                      <div className="reaction-popover" data-reaction-popover ref={reactionPopoverRef}>
-                        {REACTION_EMOJIS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            type="button"
-                            className={`reaction-popover-item${
-                              message.reactions?.some((r) => r.userId === me.id && r.emoji === emoji)
-                                ? ' active'
-                                : ''
-                            }`}
-                            onClick={() => {
-                              onMessageReaction(message, emoji)
-                              setReactionFor(null)
-                            }}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
                 <span className="message-meta">
@@ -383,6 +315,8 @@ const MessageList = forwardRef<MessageListHandle, MessageListProps>(function Mes
           x={menu.x}
           y={menu.y}
           actions={buildActions(menu.message)}
+          activeReactions={menu.message.reactions?.filter((r) => r.userId === me?.id).map((r) => r.emoji) ?? []}
+          onReact={(emoji) => onMessageReaction(menu.message, emoji)}
           onSelect={handleMenuSelect}
           onClose={() => setMenu(null)}
         />

@@ -23,7 +23,34 @@ const CATEGORY_LABELS: Record<number, string> = {
 
 export const DEFAULT_GROUP = 0
 
-export const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '👏', '😮', '😢', '🎉']
+// The strip in the message context menu scrolls, so the set is larger than the
+// strip can show. These exact strings are part of the contract: a reaction is
+// stored as the string selected here and matched by equality, so rewriting the
+// codepoints of an existing entry (for example '👍' to '👍️', which is how the
+// bundled emoji index spells it) would leave already-recorded reactions
+// untoggleable. Add to the end; never rewrite what is already here.
+export const REACTION_EMOJIS = [
+  '👍',
+  '❤️',
+  '😂',
+  '🔥',
+  '👏',
+  '😮',
+  '😢',
+  '🎉',
+  '🤝',
+  '😍',
+  '🥰',
+  '🥳',
+  '🤔',
+  '👀',
+  '😎',
+  '🙏',
+  '👎',
+  '🥺',
+  '😭',
+  '😡',
+]
 
 export const categories: EmojiCategory[] = emojiIndex.categories.map((category) => ({
   g: category.g,
