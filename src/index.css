@@ -1105,11 +1105,13 @@ textarea {
   flex-direction: column;
   gap: 14px;
   min-height: 0;
+  min-width: 0;
 
   form {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    min-width: 0;
   }
 }
 
@@ -1125,6 +1127,7 @@ textarea {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* GIF picker */
@@ -1760,6 +1763,10 @@ textarea {
   font-size: 14px;
   text-align: center;
   margin: 0 0 8px;
+  min-width: 0;
+  width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .group-description {
@@ -1903,9 +1910,12 @@ textarea {
   gap: 4px;
   max-height: 220px;
   overflow-y: auto;
+  min-width: 0;
 }
 
 .member-picker-item {
+  min-width: 0;
+
   label {
     display: flex;
     align-items: center;
@@ -1914,6 +1924,14 @@ textarea {
     border-radius: 8px;
     cursor: pointer;
     color: var(--text);
+    min-width: 0;
+
+    span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     &:hover {
       background: var(--hover);

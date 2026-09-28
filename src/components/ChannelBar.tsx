@@ -346,7 +346,13 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
                   <button type="button" onClick={startUserSearch}>
                     Найти друзей
                   </button>
-                  <button type="button" onClick={() => setCreatingGroup(true)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlusOpen(false)
+                      setCreatingGroup(true)
+                    }}
+                  >
                     Создать группу
                   </button>
                 </div>
