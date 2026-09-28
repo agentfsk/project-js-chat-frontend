@@ -60,10 +60,6 @@ function CreateGroupModal({ channel, onClose }: CreateGroupModalProps) {
       setError('Введите название группы')
       return
     }
-    if (!editing && selected.size === 0) {
-      setError('Выберите хотя бы одного участника')
-      return
-    }
     setSaving(true)
     try {
       const payload = {
