@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ChangeEvent, type FormEvent, useEffect, useRef, useState } from 'react'
-import { useChatStore } from '../store/chat'
+import { useChannelMute, useChatStore } from '../store/chat'
+import { useUsersStore } from '../store/users'
 import { emitEditMessage, emitNewMessage } from '../socket'
 import {
   ALLOWED_ATTACHMENT_TYPES,
@@ -13,6 +14,15 @@ import type { GiphyGif } from '../api/giphy'
 import type { Attachment, Message } from '../types'
 
 const EmojiPicker = lazy(() => import('./EmojiPicker'))
+
+function formatRemaining(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+}
 
 type MessageFormProps = {
   channelId: number
@@ -40,7 +50,16 @@ function MessageForm({
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const caretRef = useRef<number | null>(null)
   const setError = useChatStore((state) => state.setError)
+  const me = useUsersStore((state) => state.me)
+  const mute = useChannelMute(me)
+  const [now, setNow] = useState(() => Date.now())
   const COMPOSER_MAX_HEIGHT = 200
+
+  useEffect(() => {
+    if (!mute) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [mute])
 
   const syncInputHeight = (el: HTMLTextAreaElement | null) => {
     if (!el) return
@@ -69,6 +88,12 @@ function MessageForm({
   }
 
   const canSubmit = !uploading && (body.trim().length > 0 || file !== null)
+
+  const mutedUntilMs = mute ? Date.parse(mute.mutedUntil) : Number.NaN
+  const muted = Boolean(
+    !editingMessage && mute && Number.isFinite(mutedUntilMs) && mutedUntilMs > now,
+  )
+  const remainingMs = muted ? Math.max(0, mutedUntilMs - now) : 0
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = event.target.files?.[0] ?? null
@@ -178,13 +203,20 @@ function MessageForm({
           </button>
         </div>
       )}
+      {muted && (
+        <div className="message-form-mute-note">
+          <span>
+            Вы заглушены в этой группе на {mute && remainingMs > 0 ? `… осталось ${formatRemaining(remainingMs)}` : ''}
+          </span>
+        </div>
+      )}
       <div className="message-form-row">
         {!editingMessage && (
           <button
             type="button"
             className="icon-btn"
             title="Прикрепить файл"
-            disabled={uploading}
+            disabled={uploading || muted}
             onClick={() => fileInputRef.current?.click()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -197,7 +229,7 @@ function MessageForm({
             type="button"
             className="icon-btn"
             title="Отправить GIF"
-            disabled={uploading}
+            disabled={uploading || muted}
             onClick={() => setPickerOpen(true)}
           >
             GIF
@@ -207,7 +239,7 @@ function MessageForm({
           type="button"
           className="icon-btn"
           title="Вставить эмодзи"
-          disabled={uploading}
+          disabled={uploading || muted}
           onClick={() => setEmojiOpen((open) => !open)}
         >
           ☺
@@ -223,7 +255,7 @@ function MessageForm({
             syncInputHeight(event.target)
           }}
           placeholder={editingMessage ? 'Изменить сообщение...' : replyingMessage ? 'Ответить...' : 'Введите сообщение...'}
-          disabled={uploading}
+          disabled={uploading || muted}
         />
         {editingMessage ? (
           <button type="submit" className="send-btn" title="Сохранить" disabled={!body.trim()}>

@@ -4,14 +4,18 @@ import { countUnread, useChannelUnread, useUnreadStore } from '../store/unread'
 import { useUsersStore } from '../store/users'
 import { emitNewChannel, emitRenameChannel, emitRemoveChannel } from '../socket'
 import { searchUsers } from '../api/users'
+import { channelKind, isGroupChannel, isPrivateConversation } from '../utils/channelKind'
 import type { Channel, UserProfile } from '../types'
 import Avatar from './Avatar'
 import ProfileModal from './ProfileModal'
 import ChannelInputModal from './ChannelInputModal'
 import RemoveChannelModal from './RemoveChannelModal'
 import UnreadBadge from './UnreadBadge'
+import CreateGroupModal from './CreateGroupModal'
+import GroupInfoModal from './GroupInfoModal'
 
 type Tab = 'private' | 'channels'
+type SearchMode = 'chats' | 'users'
 
 type ChannelBarProps = {
   open?: boolean
@@ -131,6 +135,35 @@ function DmRow({ channel, active, onSelect }: DmRowProps) {
   )
 }
 
+type GroupRowProps = {
+  channel: Channel
+  active: boolean
+  onSelect: () => void
+  onInfo: () => void
+}
+
+function GroupRow({ channel, active, onSelect, onInfo }: GroupRowProps) {
+  const me = useUsersStore((state) => state.me)
+  const unread = useChannelUnread(channel.id, me?.id ?? null)
+
+  return (
+    <li className={`channel-item${active ? ' active' : ''}`}>
+      <button type="button" className="channel-avatar-btn" aria-label="О группе" onClick={onInfo}>
+        <Avatar username={channel.name} src={channel.avatarUrl} />
+      </button>
+      <button type="button" className="channel-name" onClick={onSelect}>
+        <span className="dm-name">{channel.name}</span>
+        <UnreadBadge count={unread} />
+      </button>
+      <span className="channel-actions">
+        <button type="button" className="icon-btn" title="О группе" onClick={onInfo}>
+          …
+        </button>
+      </span>
+    </li>
+  )
+}
+
 function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
   const channels = useChatStore((state) => state.channels)
   const currentChannelId = useChatStore((state) => state.currentChannelId)
@@ -138,6 +171,10 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
   const setError = useChatStore((state) => state.setError)
   const [tab, setTab] = useState<Tab>('channels')
   const [creating, setCreating] = useState(false)
+  const [creatingGroup, setCreatingGroup] = useState(false)
+  const [infoChannelId, setInfoChannelId] = useState<number | null>(null)
+  const [searchMode, setSearchMode] = useState<SearchMode>('chats')
+  const [plusOpen, setPlusOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [searched, setSearched] = useState('')
   const [results, setResults] = useState<UserProfile[]>([])
@@ -148,12 +185,14 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
     onNavigate?.()
   }
 
-  const privateChannels = channels.filter((channel) => channel.private)
-  const publicChannels = channels.filter((channel) => !channel.private)
-  const showResults = query.trim().length > 0 && searched === query.trim()
+  const privateChannels = channels.filter((channel) => isPrivateConversation(channel))
+  const publicChannels = channels.filter((channel) => channelKind(channel) === 'public')
 
   const me = useUsersStore((state) => state.me)
   const contacts = useUsersStore((state) => state.contacts)
+  const profiles = useUsersStore((state) => state.profiles)
+
+  // Contacts-first ordering; groups (no peer) trail the list.
   const sortedPrivateChannels = [...privateChannels].sort((a, b) => {
     const aPeer = a.participants?.find((id) => id !== me?.id)
     const bPeer = b.participants?.find((id) => id !== me?.id)
@@ -163,7 +202,23 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
     return 0
   })
 
+  const trimmedQuery = query.trim()
+
+  // «Поиск чатов» filters the existing list in place by group name or peer
+  // username; «Поиск пользователей» hits the directory API.
+  const filteredPrivate = trimmedQuery
+    ? sortedPrivateChannels.filter((channel) => {
+        if (isGroupChannel(channel)) {
+          return channel.name.toLowerCase().includes(trimmedQuery.toLowerCase())
+        }
+        const peerId = channel.participants?.find((id) => id !== me?.id)
+        const peer = peerId !== undefined ? profiles[peerId] : undefined
+        return (peer?.username ?? channel.name).toLowerCase().includes(trimmedQuery.toLowerCase())
+      })
+    : sortedPrivateChannels
+
   useEffect(() => {
+    if (searchMode !== 'users') return
     const trimmed = query.trim()
     if (trimmed.length === 0) return
     const timer = setTimeout(() => {
@@ -179,7 +234,9 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
         })
     }, 300)
     return () => clearTimeout(timer)
-  }, [query])
+  }, [query, searchMode])
+
+  const showUserResults = searchMode === 'users' && trimmedQuery.length > 0 && searched === trimmedQuery
 
   // Tab totals sum every chat the tab lists, non-contacts included, so the
   // sidebar never hides unread work behind a tab the user has not opened.
@@ -206,13 +263,30 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
     }
   }
 
+  const switchTab = (next: Tab) => {
+    setTab(next)
+    setPlusOpen(false)
+  }
+
+  const startUserSearch = () => {
+    setPlusOpen(false)
+    setSearchMode('users')
+  }
+
+  const exitUserSearch = () => {
+    setSearchMode('chats')
+    setQuery('')
+    setSearched('')
+    setResults([])
+  }
+
   return (
     <aside className={`channel-bar${open ? ' drawer-open' : ''}`}>
       <div className="sidebar-tabs">
         <button
           type="button"
           className={`sidebar-tab${tab === 'private' ? ' active' : ''}`}
-          onClick={() => setTab('private')}
+          onClick={() => switchTab('private')}
         >
           Личные
           <UnreadBadge count={privateTotal} />
@@ -220,7 +294,7 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
         <button
           type="button"
           className={`sidebar-tab${tab === 'channels' ? ' active' : ''}`}
-          onClick={() => setTab('channels')}
+          onClick={() => switchTab('channels')}
         >
           Каналы
           <UnreadBadge count={channelsTotal} />
@@ -257,15 +331,41 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
         <>
           <div className="channel-bar-head">
             <span className="channel-bar-title">Личные</span>
+            <div className="plus-wrap">
+              {searchMode === 'users' && <span className="search-mode-chip">Поиск пользователей</span>}
+              <button
+                type="button"
+                className="icon-btn"
+                title="Добавить"
+                onClick={() => setPlusOpen((open) => !open)}
+              >
+                +
+              </button>
+              {plusOpen && (
+                <div className="plus-popover">
+                  <button type="button" onClick={startUserSearch}>
+                    Найти друзей
+                  </button>
+                  <button type="button" onClick={() => setCreatingGroup(true)}>
+                    Создать группу
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <input
             className="search-input"
             type="search"
-            placeholder="Поиск пользователей"
+            placeholder={searchMode === 'users' ? 'Поиск пользователей' : 'Поиск чатов'}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          {showResults ? (
+          {searchMode === 'users' && (
+            <button type="button" className="search-mode-back" onClick={exitUserSearch}>
+              ← к чатам
+            </button>
+          )}
+          {showUserResults ? (
             <ul className="channel-list">
               {results.length === 0 && <li className="search-empty">Никого не найдено</li>}
               {results.map((profile) => (
@@ -283,15 +383,33 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
             </ul>
           ) : (
             <ul className="channel-list">
-              {privateChannels.length === 0 && <li className="search-empty">Пока нет личных чатов</li>}
-              {sortedPrivateChannels.map((channel) => (
-                <DmRow
-                  key={channel.id}
-                  channel={channel}
-                  active={channel.id === currentChannelId}
-                  onSelect={() => handleSelectChannel(channel.id)}
-                />
-              ))}
+              {filteredPrivate.length === 0 && (
+                <li className="search-empty">
+                  {trimmedQuery
+                    ? 'Ничего не найдено'
+                    : searchMode === 'users'
+                      ? 'Пока нет личных чатов'
+                      : 'Пока нет личных чатов'}
+                </li>
+              )}
+              {filteredPrivate.map((channel) =>
+                isGroupChannel(channel) ? (
+                  <GroupRow
+                    key={channel.id}
+                    channel={channel}
+                    active={channel.id === currentChannelId}
+                    onSelect={() => handleSelectChannel(channel.id)}
+                    onInfo={() => setInfoChannelId(channel.id)}
+                  />
+                ) : (
+                  <DmRow
+                    key={channel.id}
+                    channel={channel}
+                    active={channel.id === currentChannelId}
+                    onSelect={() => handleSelectChannel(channel.id)}
+                  />
+                ),
+              )}
             </ul>
           )}
         </>
@@ -304,6 +422,10 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
           onSubmit={handleCreate}
           onClose={() => setCreating(false)}
         />
+      )}
+      {creatingGroup && <CreateGroupModal onClose={() => setCreatingGroup(false)} />}
+      {infoChannelId !== null && (
+        <GroupInfoModal channelId={infoChannelId} onClose={() => setInfoChannelId(null)} />
       )}
       {selected && <ProfileModal profile={selected} onClose={() => setSelected(null)} />}
     </aside>

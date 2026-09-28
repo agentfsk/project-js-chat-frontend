@@ -1,9 +1,23 @@
+export type ChannelKind = 'public' | 'direct' | 'group'
+
+export type ChannelMuteEntry = {
+  userId: number
+  mutedUntil: string
+}
+
 export type Channel = {
   id: number
   name: string
   removable: boolean
   private?: boolean
   participants?: number[]
+  kind?: ChannelKind
+  description?: string
+  avatarUrl?: string | null
+  ownerId?: number
+  admins?: number[]
+  muted?: ChannelMuteEntry[]
+  members?: UserProfile[]
 }
 
 export type UserProfile = {

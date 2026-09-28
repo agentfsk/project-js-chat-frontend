@@ -68,6 +68,12 @@ export function connectSocket(): Socket | null {
   socket.on('removeChannel', ({ id }) => {
     useChatStore.getState().removeChannel(Number(id))
   })
+  socket.on('channelUpdated', (channel) => {
+    useChatStore.getState().updateChannel(channel)
+  })
+  socket.on('channelRemoved', ({ id }) => {
+    useChatStore.getState().removeChannel(Number(id))
+  })
 
   socket.on('contactRequest', (payload) => {
     const { requestId, from, channel } = payload as {
@@ -164,6 +170,56 @@ export function emitRenameChannel(id: number, name: string): Promise<Channel> {
 
 export function emitRemoveChannel(id: number): Promise<void> {
   return emitWithAck<void>('removeChannel', { id })
+}
+
+export type CreateGroupInput = {
+  name: string
+  description?: string
+  avatarUrl?: string | null
+  memberIds: number[]
+}
+
+export function emitCreateGroup(input: CreateGroupInput): Promise<Channel> {
+  return emitWithAck<Channel>('createGroup', input)
+}
+
+export function emitEditGroup(
+  channelId: number,
+  input: Partial<{ name: string; description: string; avatarUrl: string | null }>,
+): Promise<Channel> {
+  return emitWithAck<Channel>('editGroup', { channelId, ...input })
+}
+
+export function emitRemoveGroup(channelId: number): Promise<void> {
+  return emitWithAck<void>('removeGroup', { channelId })
+}
+
+export function emitInviteToGroup(channelId: number, memberIds: number[]): Promise<void> {
+  return emitWithAck<void>('inviteToGroup', { channelId, memberIds })
+}
+
+export function emitKickFromGroup(channelId: number, userId: number): Promise<void> {
+  return emitWithAck<void>('kickFromGroup', { channelId, userId })
+}
+
+export function emitSetGroupAdmin(
+  channelId: number,
+  userId: number,
+  admin: boolean,
+): Promise<void> {
+  return emitWithAck<void>('setGroupAdmin', { channelId, userId, admin })
+}
+
+export function emitMuteGroupMember(
+  channelId: number,
+  userId: number,
+  until: string,
+): Promise<void> {
+  return emitWithAck<void>('muteGroupMember', { channelId, userId, until })
+}
+
+export function emitUnmuteGroupMember(channelId: number, userId: number): Promise<void> {
+  return emitWithAck<void>('unmuteGroupMember', { channelId, userId })
 }
 
 export function emitEditMessage(messageId: number, body: string): Promise<void> {

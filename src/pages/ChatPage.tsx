@@ -29,6 +29,7 @@ import IncomingCallOverlay from '../components/IncomingCallOverlay'
 import ActiveCallOverlay from '../components/ActiveCallOverlay'
 import NotificationToast from '../components/NotificationToast'
 import { useToastStore } from '../store/toasts'
+import { isDirectChannel, isGroupChannel } from '../utils/channelKind'
 import type { CallMode, Message } from '../types'
 
 const MOBILE_QUERY = '(max-width: 700px)'
@@ -123,11 +124,13 @@ function ChatPage() {
   }, [messages, markChannelRead])
 
   const activeChannel = channels.find((channel) => channel.id === currentChannelId) ?? null
+  const activeIsDirect = activeChannel ? isDirectChannel(activeChannel) : false
+  const activeIsGroup = activeChannel ? isGroupChannel(activeChannel) : false
   const pendingRequest =
-    activeChannel?.private && activeChannel.id !== undefined
+    activeIsDirect && activeChannel && activeChannel.id !== undefined
       ? (requests.find((request) => request.channelId === activeChannel.id) ?? null)
       : null
-  const peerId = activeChannel?.private
+  const peerId = activeIsDirect && activeChannel
     ? (activeChannel.participants?.find((participantId) => participantId !== me?.id) ?? null)
     : null
   const peerProfile = peerId !== null ? profiles[peerId] ?? null : null
@@ -203,29 +206,39 @@ function ChatPage() {
           {activeChannel && (
             <div className="channel-title-row">
               <h2 className="channel-title">
-                {activeChannel.private && peerProfile ? (
+                {activeIsGroup ? (
+                  <>
+                    <Avatar username={activeChannel.name} src={activeChannel.avatarUrl} size={22} />
+                    <span>{activeChannel.name}</span>
+                  </>
+                ) : activeIsDirect && peerProfile ? (
                   <>
                     <Avatar username={peerProfile.username} src={peerProfile.avatarUrl} size={22} />
                     <span>{peerProfile.username}</span>
                   </>
-                ) : activeChannel.private ? (
+                ) : activeIsDirect ? (
                   activeChannel.name
                 ) : (
                   `#${activeChannel.name}`
                 )}
               </h2>
-              {activeChannel.private && peerProfile && (
+              {activeIsGroup && activeChannel.description && (
+                <div className="group-description">{activeChannel.description}</div>
+              )}
+              {activeIsDirect && peerProfile && (
                 <CallButtons peer={peerProfile} disabled={inCall} onCall={handleStartCall} />
               )}
             </div>
           )}
           {pendingRequest && <ContactRequestBanner request={pendingRequest} />}
-          <PinnedMessageBanner
-            message={pinnedMessage}
-            onNavigate={() => {
-              if (pinnedMessage) messageListRef.current?.scrollToMessage(pinnedMessage.id)
-            }}
-          />
+          {!activeIsGroup && (
+            <PinnedMessageBanner
+              message={pinnedMessage}
+              onNavigate={() => {
+                if (pinnedMessage) messageListRef.current?.scrollToMessage(pinnedMessage.id)
+              }}
+            />
+          )}
           <MessageList
             ref={messageListRef}
             messages={messages}
