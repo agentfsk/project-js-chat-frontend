@@ -48,6 +48,10 @@ The system SHALL let the owner mute any other member of the group, including an 
 - **WHEN** an admin attempts to mute another admin, or any user attempts to mute the owner
 - **THEN** the attempt is rejected and no mute is applied
 
+#### Scenario: Muting an admin or owner is rejected
+- **WHEN** any user attempts to mute the owner
+- **THEN** the attempt is rejected and no mute is applied
+
 #### Scenario: A muted member cannot send
 - **WHEN** a muted member attempts to send a message to the group before the mute expires
 - **THEN** the server rejects the message and the member's composer shows the mute state

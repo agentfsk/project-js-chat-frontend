@@ -67,4 +67,4 @@
 
 ## 13. Integration verification
 
-- [ ] 13.1 Manual end-to-end pass (frontend `npm run lint` + `npm run build`, backend `pnpm exec eslint src`): create a group from a second /api/v1 account, exchange messages, promote admin, mute a third user for 1 hour and confirm server blocks their sends + composer shows the countdown, invite, kick (target loses the row), edit, and delete group via typed `Yes` — all tabs in sync without reloads
+- [x] 13.1 Manual end-to-end pass (frontend `npm run lint` + `npm run build`, backend `pnpm exec eslint src`): create a group from a second /api/v1 account, exchange messages, promote admin, mute a third user for 1 hour and confirm server blocks their sends + composer shows the countdown, invite, kick (target loses the row), edit, and delete group via typed `Yes` — all tabs in sync without reloads

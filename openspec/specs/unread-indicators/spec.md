@@ -60,7 +60,7 @@ The system SHALL treat a message as read for the reader when it is delivered to 
 - **THEN** that message contributes nothing to any unread count
 
 ### Requirement: Unread count on a conversation row
-The system SHALL show the number of unread messages from other participants on the row of each conversation in the sidebar, and SHALL show `99+` instead of a number once the count reaches one hundred. A conversation with no unread messages SHALL show no count. Messages sent by the reader SHALL NOT be counted.
+The system SHALL show the number of unread messages from other participants on the row of each conversation in the sidebar — including public channels, direct chats and group chats — and SHALL show `99+` instead of a number once the count reaches one hundred. A conversation with no unread messages SHALL show no count. Messages sent by the reader SHALL NOT be counted.
 
 #### Scenario: Unread count on a channel row
 - **WHEN** messages from other participants arrive in a public channel that the reader has not opened
@@ -69,6 +69,10 @@ The system SHALL show the number of unread messages from other participants on t
 #### Scenario: Unread count on a direct chat row
 - **WHEN** messages from the peer arrive in a direct chat that the reader has not opened
 - **THEN** that direct chat's row in the sidebar shows how many of them are unread
+
+#### Scenario: Unread count on a group row
+- **WHEN** messages from other members arrive in a group that the reader has not opened
+- **THEN** that group's row in the sidebar shows how many of them are unread
 
 #### Scenario: Count is capped
 - **WHEN** a conversation has one hundred or more unread messages
@@ -87,15 +91,19 @@ The system SHALL show the number of unread messages from other participants on t
 - **THEN** the count is still shown after the reload
 
 ### Requirement: Summed counts on the sidebar tabs
-The system SHALL show on the tab for direct chats the sum of the unread counts of all direct chats, and on the tab for channels the sum of the unread counts of all public channels, using the same `99+` cap.
+The system SHALL show on the «личные» tab the sum of the unread counts of all direct chats and group chats, and on the «каналы» tab the sum of the unread counts of all public channels, using the same `99+` cap.
 
 #### Scenario: Direct chats tab total
 - **WHEN** unread messages exist across several direct chats
-- **THEN** the direct chats tab shows the sum of those conversations' unread counts
+- **THEN** the «личные» tab shows the sum of those conversations' unread counts
+
+#### Scenario: Groups contribute to the «личные» tab total
+- **WHEN** unread messages exist in one or more group chats
+- **THEN** those messages are part of the «личные» tab total alongside the direct chats
 
 #### Scenario: Channels tab total
 - **WHEN** unread messages exist across several public channels
-- **THEN** the channels tab shows the sum of those channels' unread counts
+- **THEN** the «каналы» tab shows the sum of those channels' unread counts
 
 #### Scenario: Tab total is capped
 - **WHEN** the summed unread count of a tab reaches one hundred or more
@@ -115,3 +123,37 @@ The system SHALL reflect a read action in every session the same reader has open
 #### Scenario: Another user's count is unaffected
 - **WHEN** one user marks a conversation read
 - **THEN** no other user sees any change in their own unread counts
+
+### Requirement: Conversations are ordered by unread count
+The system SHALL order the rows of each sidebar tab by unread count, placing conversations with more unread messages above conversations with fewer, on both the «личные» and «каналы» tabs. Conversations with equal counts SHALL be ordered so that the one whose newest unread message arrived earlier comes first, and conversations with no unread messages SHALL be placed after every conversation that has unread messages. The order SHALL NOT change while the reader is looking at the tab, and SHALL be recomputed when an unread count changes.
+
+#### Scenario: Busiest conversation on top
+- **WHEN** one conversation in the «личные» tab has five unread messages and another has two
+- **THEN** the five-message conversation's row is above the two-message conversation's row
+
+#### Scenario: Same count, earlier arrival first
+- **WHEN** two conversations in the «каналы» tab both have three unread messages and the third message of one arrived before the third message of the other
+- **THEN** the conversation that reached three unread earlier is above the other
+
+#### Scenario: Conversations without unread messages sit at the bottom
+- **WHEN** the «личные» tab holds one conversation with unread messages and several with none
+- **THEN** every conversation without unread messages is below the one that has them
+
+#### Scenario: Both tabs are ordered
+- **WHEN** the reader switches between the «личные» and «каналы» tabs
+- **THEN** each tab's rows are ordered by their own unread counts
+
+#### Scenario: Opening a conversation reorders the tab
+- **WHEN** the reader opens a conversation and its unread count drops to zero
+- **THEN** that row moves down to the read part of the tab without the reader reloading
+
+### Requirement: Unread counts are derived in a single pass
+The system SHALL derive the unread count of every conversation the reader can access from one pass over the known messages, so that a client holding many messages does not re-read the whole message list once per conversation, and SHALL show the same counts on the row badges and in the tab totals.
+
+#### Scenario: Row badges and tab totals agree
+- **WHEN** the sidebar is rendered for a reader with unread messages in several conversations
+- **THEN** every row's count and both tab totals are derived from the same computed counts and agree with each other
+
+#### Scenario: A reader's own messages never enter a count
+- **WHEN** the index is computed for a reader who sent messages in several conversations
+- **THEN** those messages are excluded from every conversation's count

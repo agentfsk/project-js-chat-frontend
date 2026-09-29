@@ -7,7 +7,7 @@ Lets users run persistent multi-user conversations with their own identity: a gr
 ## ADDED Requirements
 
 ### Requirement: Create a group from the «личные» section
-The system SHALL let the user start creating a group from a «+» action above the «личные» search, SHALL present a creation dialog asking for a group name, an optional description, an optional avatar, and member selection restricted to the creator's contacts, and SHALL create the group with the creator as its owner once a name and at least one member are provided.
+The system SHALL let the user start creating a group from a «+» action above the «личные» search, SHALL present a creation dialog asking for a group name, an optional description, an optional avatar, and member selection restricted to the creator's contacts, and SHALL create the group with the creator as its owner once a name is provided.
 
 #### Scenario: Create a group with contacts
 - **WHEN** the user opens the create-group dialog, enters a name, an optional description, uploads an optional avatar, selects members from their contacts, and confirms
@@ -20,6 +20,10 @@ The system SHALL let the user start creating a group from a «+» action above t
 #### Scenario: Confirming without a name
 - **WHEN** the user confirms group creation without entering a name
 - **THEN** the creation fails with an error and no group is created
+
+#### Scenario: Create a group without initial members
+- **WHEN** the user opens the create-group dialog, enters a name, selects no contacts, and confirms
+- **THEN** the group is created with the user as its only member and appears in the «личные» section, and the owner can invite members afterwards
 
 ### Requirement: Groups are listed in the «личные» section
 The system SHALL list the user's groups in the «личные» section alongside direct chats, each shown with its avatar (or a placeholder for its name) and name, and SHALL let the user open the group's conversation by selecting it.

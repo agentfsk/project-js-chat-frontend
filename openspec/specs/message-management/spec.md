@@ -56,7 +56,7 @@ The system SHALL let the author of a message delete it and SHALL let the admin d
 - **THEN** the message is removed and it no longer appears pinned in the channel
 
 ### Requirement: Pin and unpin messages
-The system SHALL let users pin and unpin messages within the allowed channels: any participant SHALL be able to pin a message in a private chat, and only the admin SHALL be able to pin in a public channel. Pinned messages SHALL show a pin indicator, SHALL be surfaced in a pinned banner at the top of the chat, and the change SHALL be delivered in real time to the channel participants.
+The system SHALL let users pin and unpin messages within the allowed channels: any participant SHALL be able to pin a message in a private chat, and only the admin SHALL be able to pin in a public channel. Message pinning SHALL NOT be offered in group chats. Pinned messages SHALL show a pin indicator, SHALL be surfaced in a pinned banner at the top of the chat, and the change SHALL be delivered in real time to the channel participants.
 
 #### Scenario: Participant pins in a private chat
 - **WHEN** a participant of a private chat pins a message in that chat
@@ -65,6 +65,10 @@ The system SHALL let users pin and unpin messages within the allowed channels: a
 #### Scenario: Only the admin pins in a public channel
 - **WHEN** a non-admin user tries to pin a message in a public channel
 - **THEN** the pin action is not offered, or the backend rejects it; the admin's pin in the channel succeeds
+
+#### Scenario: No pinning in a group chat
+- **WHEN** the reader opens a group chat and right-clicks or long-presses a message
+- **THEN** the context menu offers no pin action and the pinned banner is not shown for the group
 
 #### Scenario: Unpin clears the state
 - **WHEN** a pinned message is unpinned
