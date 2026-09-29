@@ -553,6 +553,20 @@ textarea {
   }
 }
 
+/* A field label and its control. Without this the label keeps its default
+   display: inline, the text and the inline-block input flow as one line, and the
+   input wraps to the next line with no space between it and the text. The gap
+   matches .auth-card label, which is the only place in the app that already
+   spaces this pair. Scoped to the group form on purpose: EditProfileModal's «Ник»
+   has the same defect and is addressed separately. min-width: 0 stops the widest
+   control from refusing to shrink. */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
 .profile-view {
   display: flex;
   flex-direction: column;
@@ -570,10 +584,14 @@ textarea {
   font-size: 18px;
 }
 
+/* Width-driven rather than breakpoint-driven: the wide modal is also narrow in a
+   small desktop window, so a media query would leave that case overflowing while
+   looking like it had fixed phones. This is a no-op whenever the buttons fit. */
 .profile-actions {
   display: flex;
   justify-content: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .avatar-remove {

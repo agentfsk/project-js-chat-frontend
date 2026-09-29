@@ -101,7 +101,7 @@ function CreateGroupModal({ channel, onClose }: CreateGroupModalProps) {
         />
       </div>
       <form onSubmit={handleSubmit}>
-        <label>
+        <label className="form-field">
           Название
           <input
             value={name}
@@ -109,7 +109,7 @@ function CreateGroupModal({ channel, onClose }: CreateGroupModalProps) {
             placeholder="Название группы"
           />
         </label>
-        <label>
+        <label className="form-field">
           Описание
           <textarea
             value={description}
