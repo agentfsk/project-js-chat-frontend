@@ -155,6 +155,9 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
           onPromote={() => {
             emitSetGroupAdmin(channel.id, menu.member.id, true).catch(handleActionError('Не удалось назначить администратора'))
           }}
+          onDemote={() => {
+            emitSetGroupAdmin(channel.id, menu.member.id, false).catch(handleActionError('Не удалось забрать права администратора'))
+          }}
           onMute={(until) => {
             emitMuteGroupMember(channel.id, menu.member.id, until).catch(handleActionError('Не удалось заглушить участника'))
           }}

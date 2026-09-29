@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Channel, UserProfile } from '../types'
-import { canKickFromGroup, canMuteGroupMember, canSetGroupAdmin } from '../utils/permissions'
+import { canDemoteGroupMember, canKickFromGroup, canMuteGroupMember, canSetGroupAdmin } from '../utils/permissions'
 
 type GroupMemberMenuProps = {
   x: number
@@ -9,6 +9,7 @@ type GroupMemberMenuProps = {
   me: UserProfile | null
   member: UserProfile
   onPromote: () => void
+  onDemote: () => void
   onMute: (untilIso: string) => void
   onUnmute: () => void
   onKick: () => void
@@ -40,6 +41,7 @@ function GroupMemberMenu({
   me,
   member,
   onPromote,
+  onDemote,
   onMute,
   onUnmute,
   onKick,
@@ -50,11 +52,13 @@ function GroupMemberMenu({
 
   const isMuted = channel.muted?.some((m) => m.userId === member.id) ?? false
   const canMute = canMuteGroupMember(channel, me, member.id)
-  const canPromote = canSetGroupAdmin(channel, me, member.id) && !(channel.admins ?? []).includes(member.id)
+  const canPromote = canSetGroupAdmin(channel, me, member.id) && !canDemoteGroupMember(channel, me, member.id)
+  const canDemote = canDemoteGroupMember(channel, me, member.id)
   const canKick = canKickFromGroup(channel, me, member.id)
 
   const items: { id: string; label: string; danger?: boolean }[] = []
   if (canPromote) items.push({ id: 'promote', label: 'Сделать администратором' })
+  if (canDemote) items.push({ id: 'demote', label: 'Забрать права администратора' })
   if (canMute) {
     items.push(isMuted ? { id: 'unmute', label: 'Вернуть голос' } : { id: 'mute', label: 'Заглушить' })
   }
@@ -118,6 +122,7 @@ function GroupMemberMenu({
               className={`message-context-menu-item${item.danger ? ' danger' : ''}`}
               onClick={() => {
                 if (item.id === 'promote') onPromote()
+                else if (item.id === 'demote') onDemote()
                 else if (item.id === 'unmute') onUnmute()
                 else if (item.id === 'kick') onKick()
                 else if (item.id === 'mute') {

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useChatStore } from '../store/chat'
-import { countUnread, useChannelUnread, useUnreadStore } from '../store/unread'
+import { buildUnreadIndex, sortByUnread, unreadFor, useUnreadStore } from '../store/unread'
 import { useUsersStore } from '../store/users'
 import { emitNewChannel, emitRenameChannel, emitRemoveChannel } from '../socket'
 import { searchUsers } from '../api/users'
@@ -29,13 +29,12 @@ function errorMessage(error: unknown, fallback: string): string {
 type ChannelRowProps = {
   channel: Channel
   active: boolean
+  unread: number
   onSelect: () => void
 }
 
-function ChannelRow({ channel, active, onSelect }: ChannelRowProps) {
+function ChannelRow({ channel, active, unread, onSelect }: ChannelRowProps) {
   const setError = useChatStore((state) => state.setError)
-  const myId = useUsersStore((state) => state.me?.id ?? null)
-  const unread = useChannelUnread(channel.id, myId)
   const [renaming, setRenaming] = useState(false)
   const [removing, setRemoving] = useState(false)
 
@@ -102,12 +101,12 @@ function ChannelRow({ channel, active, onSelect }: ChannelRowProps) {
 type DmRowProps = {
   channel: Channel
   active: boolean
+  unread: number
   onSelect: () => void
 }
 
-function DmRow({ channel, active, onSelect }: DmRowProps) {
+function DmRow({ channel, active, unread, onSelect }: DmRowProps) {
   const me = useUsersStore((state) => state.me)
-  const unread = useChannelUnread(channel.id, me?.id ?? null)
   const profiles = useUsersStore((state) => state.profiles)
   const contacts = useUsersStore((state) => state.contacts)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -138,14 +137,12 @@ function DmRow({ channel, active, onSelect }: DmRowProps) {
 type GroupRowProps = {
   channel: Channel
   active: boolean
+  unread: number
   onSelect: () => void
   onInfo: () => void
 }
 
-function GroupRow({ channel, active, onSelect, onInfo }: GroupRowProps) {
-  const me = useUsersStore((state) => state.me)
-  const unread = useChannelUnread(channel.id, me?.id ?? null)
-
+function GroupRow({ channel, active, unread, onSelect, onInfo }: GroupRowProps) {
   return (
     <li className={`channel-item${active ? ' active' : ''}`}>
       <button type="button" className="channel-avatar-btn" aria-label="О группе" onClick={onInfo}>
@@ -189,23 +186,38 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
   const publicChannels = channels.filter((channel) => channelKind(channel) === 'public')
 
   const me = useUsersStore((state) => state.me)
-  const contacts = useUsersStore((state) => state.contacts)
   const profiles = useUsersStore((state) => state.profiles)
 
-  // Contacts-first ordering; groups (no peer) trail the list.
-  const sortedPrivateChannels = [...privateChannels].sort((a, b) => {
-    const aPeer = a.participants?.find((id) => id !== me?.id)
-    const bPeer = b.participants?.find((id) => id !== me?.id)
-    const aContact = aPeer !== undefined && contacts.some((c) => c.id === aPeer)
-    const bContact = bPeer !== undefined && contacts.some((c) => c.id === bPeer)
-    if (aContact !== bContact) return aContact ? -1 : 1
-    return 0
-  })
+  // One pass over the messages feeds every badge, both tab totals and both
+  // orderings, so an arriving message re-renders the sidebar once instead of
+  // once per row.
+  const firstSeenAt = useUnreadStore((state) => state.firstSeenAt)
+  const lastReadAtByChannel = useUnreadStore((state) => state.lastReadAtByChannel)
+  const allMessages = useChatStore((state) => state.messages)
+  const myId = me?.id ?? null
+
+  const unreadIndex = useMemo(
+    () => buildUnreadIndex(allMessages, firstSeenAt, lastReadAtByChannel, myId),
+    [allMessages, firstSeenAt, lastReadAtByChannel, myId],
+  )
+
+  // Busiest conversation on top; on a tie the one that reached that count
+  // earlier. Replaces the old contacts-first order, which pushed a non-contact
+  // with unread mail below read contacts.
+  const sortedPrivateChannels = useMemo(
+    () => sortByUnread(privateChannels, unreadIndex),
+    [privateChannels, unreadIndex],
+  )
+  const sortedPublicChannels = useMemo(
+    () => sortByUnread(publicChannels, unreadIndex),
+    [publicChannels, unreadIndex],
+  )
 
   const trimmedQuery = query.trim()
 
-  // «Поиск чатов» filters the existing list in place by group name or peer
-  // username; «Поиск пользователей» hits the directory API.
+  // «Поиск чатов» filters the ordered list in place by group name or peer
+  // username; «Поиск пользователей» hits the directory API. Filtering never
+  // reorders, so what is left keeps its unread order.
   const filteredPrivate = trimmedQuery
     ? sortedPrivateChannels.filter((channel) => {
         if (isGroupChannel(channel)) {
@@ -238,18 +250,10 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
 
   const showUserResults = searchMode === 'users' && trimmedQuery.length > 0 && searched === trimmedQuery
 
-  // Tab totals sum every chat the tab lists, non-contacts included, so the
-  // sidebar never hides unread work behind a tab the user has not opened.
-  const firstSeenAt = useUnreadStore((state) => state.firstSeenAt)
-  const lastReadAtByChannel = useUnreadStore((state) => state.lastReadAtByChannel)
-  const allMessages = useChatStore((state) => state.messages)
-  const myId = me?.id ?? null
-
+  // Tab totals sum the same index the badges read, non-contacts included, so
+  // the sidebar never hides unread work behind a tab the user has not opened.
   const sumUnread = (list: Channel[]): number =>
-    list.reduce(
-      (sum, channel) => sum + countUnread(firstSeenAt, lastReadAtByChannel[channel.id], allMessages, channel.id, myId),
-      0,
-    )
+    list.reduce((sum, channel) => sum + unreadFor(unreadIndex, channel.id), 0)
 
   const privateTotal = sumUnread(privateChannels)
   const channelsTotal = sumUnread(publicChannels)
@@ -315,11 +319,12 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
             </button>
           </div>
           <ul className="channel-list">
-            {publicChannels.map((channel) => (
+            {sortedPublicChannels.map((channel) => (
               <ChannelRow
                 key={channel.id}
                 channel={channel}
                 active={channel.id === currentChannelId}
+                unread={unreadFor(unreadIndex, channel.id)}
                 onSelect={() => handleSelectChannel(channel.id)}
               />
             ))}
@@ -404,6 +409,7 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
                     key={channel.id}
                     channel={channel}
                     active={channel.id === currentChannelId}
+                    unread={unreadFor(unreadIndex, channel.id)}
                     onSelect={() => handleSelectChannel(channel.id)}
                     onInfo={() => setInfoChannelId(channel.id)}
                   />
@@ -412,6 +418,7 @@ function ChannelBar({ open = false, onNavigate }: ChannelBarProps) {
                     key={channel.id}
                     channel={channel}
                     active={channel.id === currentChannelId}
+                    unread={unreadFor(unreadIndex, channel.id)}
                     onSelect={() => handleSelectChannel(channel.id)}
                   />
                 ),

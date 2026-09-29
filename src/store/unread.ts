@@ -1,6 +1,4 @@
-import { useMemo } from 'react'
 import { create } from 'zustand'
-import { useChatStore } from './chat'
 import type { Message, ReadState } from '../types'
 
 export const UNREAD_CAP = 99
@@ -71,16 +69,77 @@ export function countUnread(
   return count
 }
 
-export function formatUnread(count: number): string {
-  return count > UNREAD_CAP ? `${UNREAD_CAP}+` : String(count)
+export type UnreadEntry = {
+  count: number
+  // The moment this conversation reached its current count: the createdAt of
+  // its newest unread message. Null when it has none.
+  lastUnreadAt: number | null
 }
 
-export function useChannelUnread(channelId: number, myId: number | null): number {
-  const firstSeenAt = useUnreadStore((state) => state.firstSeenAt)
-  const lastReadAt = useUnreadStore((state) => state.lastReadAtByChannel[channelId])
-  const messages = useChatStore((state) => state.messages)
-  return useMemo(
-    () => countUnread(firstSeenAt, lastReadAt, messages, channelId, myId),
-    [firstSeenAt, lastReadAt, messages, channelId, myId],
-  )
+export type UnreadIndex = Record<number, UnreadEntry>
+
+// One pass over the messages for every conversation at once, replacing a full
+// scan per sidebar row. The baseline rule is countUnread's, unchanged: a message
+// counts when it is newer than both firstSeenAt and the channel's last read.
+export function buildUnreadIndex(
+  messages: Message[],
+  firstSeenAt: string | null,
+  lastReadAtByChannel: Record<number, string>,
+  myId: number | null,
+): UnreadIndex {
+  const index: UnreadIndex = {}
+  if (myId === null) return index
+
+  const firstSeen = toMillis(firstSeenAt) ?? Number.NEGATIVE_INFINITY
+  const baselines = new Map<number, number>()
+  for (const [key, value] of Object.entries(lastReadAtByChannel)) {
+    const at = toMillis(value)
+    if (at !== null) baselines.set(Number(key), at)
+  }
+
+  for (const message of messages) {
+    if (message.userId === myId) continue
+    const at = toMillis(message.createdAt)
+    if (at === null) continue
+    const baseline = Math.max(firstSeen, baselines.get(message.channelId) ?? Number.NEGATIVE_INFINITY)
+    if (!Number.isFinite(baseline)) continue
+    if (at <= baseline) continue
+
+    const entry = index[message.channelId] ?? (index[message.channelId] = { count: 0, lastUnreadAt: null })
+    entry.count += 1
+    if (entry.lastUnreadAt === null || at > entry.lastUnreadAt) entry.lastUnreadAt = at
+  }
+
+  return index
+}
+
+export function unreadFor(index: UnreadIndex, channelId: number): number {
+  return index[channelId]?.count ?? 0
+}
+
+// Sidebar order: more unread first, and on a tie the conversation that reached
+// that count earlier — the one whose newest unread message is older — comes
+// first. A conversation with no unread time sorts after every one that has a
+// real timestamp, and both land below anything that still has unread messages.
+export function compareByUnread(a: UnreadEntry, b: UnreadEntry): number {
+  if (a.count !== b.count) return b.count - a.count
+  if (a.lastUnreadAt === b.lastUnreadAt) return 0
+  if (a.lastUnreadAt === null) return 1
+  if (b.lastUnreadAt === null) return -1
+  return a.lastUnreadAt - b.lastUnreadAt
+}
+
+// Sorts a tab's channels by unread activity without mutating the input. Ties
+// beyond the timestamp keep the order they arrived in, so a re-render never
+// shuffles rows that nothing distinguished.
+export function sortByUnread<T extends { id: number }>(channels: T[], index: UnreadIndex): T[] {
+  const empty: UnreadEntry = { count: 0, lastUnreadAt: null }
+  return channels
+    .map((channel, order) => ({ channel, order, entry: index[channel.id] ?? empty }))
+    .sort((a, b) => compareByUnread(a.entry, b.entry) || a.order - b.order)
+    .map((wrapped) => wrapped.channel)
+}
+
+export function formatUnread(count: number): string {
+  return count > UNREAD_CAP ? `${UNREAD_CAP}+` : String(count)
 }

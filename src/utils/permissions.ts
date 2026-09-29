@@ -32,32 +32,54 @@ export function canModerateGroup(channel: Channel, user: UserProfile | null): bo
   return isGroupOwner(channel, user) || isGroupAdmin(channel, user)
 }
 
-// A target is "mutable" when the viewer may open a moderation menu on it: the
-// viewer moderates the group and the target is a plain member.
-export function canMuteGroupMember(channel: Channel, user: UserProfile | null, targetId: number): boolean {
-  if (!user || !isGroupChannel(channel)) return false
-  if (!canModerateGroup(channel, user)) return false
-  return isModeratableTarget(channel, targetId)
+function isGroupMemberOf(channel: Channel, userId: number): boolean {
+  return Boolean(channel.participants?.includes(userId))
 }
 
+function isAdminTarget(channel: Channel, targetId: number): boolean {
+  return Boolean(channel.admins?.includes(targetId))
+}
+
+// Muting and voice restoration: the owner reaches any other member, an admin
+// only a plain one, and nobody reaches the owner.
+export function canMuteGroupMember(channel: Channel, user: UserProfile | null, targetId: number): boolean {
+  if (!user || !isGroupChannel(channel)) return false
+  if (!isGroupMemberOf(channel, targetId)) return false
+  if (channel.ownerId === targetId) return false
+  if (isGroupOwner(channel, user)) return true
+  if (isGroupAdmin(channel, user)) return !isAdminTarget(channel, targetId)
+  return false
+}
+
+// Role changes and removal are the owner's alone, over any other member. The
+// membership check mirrors the server's own guard so the menu never offers an
+// action the socket would refuse.
 export function canSetGroupAdmin(channel: Channel, user: UserProfile | null, targetId: number): boolean {
-  return Boolean(isGroupOwner(channel, user) && targetId !== channel.ownerId)
+  return Boolean(isGroupOwner(channel, user)
+    && isGroupMemberOf(channel, targetId)
+    && targetId !== channel.ownerId)
+}
+
+export function canDemoteGroupMember(channel: Channel, user: UserProfile | null, targetId: number): boolean {
+  return Boolean(isGroupOwner(channel, user)
+    && isGroupMemberOf(channel, targetId)
+    && targetId !== channel.ownerId
+    && isAdminTarget(channel, targetId))
 }
 
 export function canKickFromGroup(channel: Channel, user: UserProfile | null, targetId: number): boolean {
-  return Boolean(isGroupOwner(channel, user) && targetId !== channel.ownerId)
+  return Boolean(isGroupOwner(channel, user)
+    && isGroupMemberOf(channel, targetId)
+    && targetId !== channel.ownerId)
 }
 
-// Whether a moderation menu may be opened on the target at all: the viewer
-// moderates the group and the target is a plain member. Admins get no menu on
-// other admins or the owner; plain members get no menu anywhere.
+// Whether a moderation menu may be opened on the target at all: some action is
+// available on it. Admins get no menu on other admins or the owner; plain
+// members get no menu anywhere.
 export function canActOnGroupMember(channel: Channel, user: UserProfile | null, targetId: number): boolean {
-  return Boolean(isGroupChannel(channel) && canModerateGroup(channel, user) && isModeratableTarget(channel, targetId))
-}
-
-function isModeratableTarget(channel: Channel, targetId: number): boolean {
-  if (!channel.participants?.includes(targetId)) return false
-  if (channel.ownerId === targetId) return false
-  if (channel.admins?.includes(targetId)) return false
-  return true
+  if (!isGroupChannel(channel)) return false
+  if (isGroupOwner(channel, user)) {
+    return isGroupMemberOf(channel, targetId) && targetId !== channel.ownerId
+  }
+  return canMuteGroupMember(channel, user, targetId)
 }
