@@ -60,6 +60,10 @@ The system SHALL lay out the chat page as a mobile layout when the viewport is n
 - **WHEN** the user interacts with composer buttons, drawer items, or call controls on a narrow screen
 - **THEN** each interactive control has a tap target of at least 40px and the control is not cramped
 
+#### Scenario: The group info modal's action row stays inside the panel
+- **WHEN** the group info modal is open on a viewport narrower than 700px
+- **THEN** its action buttons are reflowed onto as many rows as they need and every button stays fully inside the modal panel, with no button crossing the panel's border
+
 ### Requirement: Login page is usable on narrow screens
 The system SHALL keep the login and signup form centered and fully usable on narrow screens without horizontal scrolling.
 
