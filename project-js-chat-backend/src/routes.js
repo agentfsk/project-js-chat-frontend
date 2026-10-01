@@ -1,0 +1,1207 @@
+// @ts-check
+
+import _ from 'lodash';
+import HttpErrors from 'http-errors';
+
+import { sendCallPush, initFCM } from './fcm.js';
+
+initFCM();
+
+const { Unauthorized, BadRequest } = HttpErrors;
+
+const getNextId = () => Number(_.uniqueId());
+
+const FRONTEND_URL = process.env.FRONTEND_URL || '#';
+const BACKEND_REPO_URL = process.env.BACKEND_REPO_URL || '#';
+const FRONTEND_REPO_URL = process.env.FRONTEND_REPO_URL || '#';
+
+const publicProfile = (user) => ({
+  id: user.id,
+  username: user.username,
+  avatarUrl: user.avatarUrl || null,
+  role: user.role || 'user',
+});
+
+const isAdminUser = (state, userId) => {
+  const user = state.users.find((candidate) => candidate.id === userId);
+  return Boolean(user && user.role === 'admin');
+};
+
+const channelKind = (channel) => channel.kind ?? (channel.private ? 'direct' : 'public');
+
+const isGroup = (channel) => channelKind(channel) === 'group';
+
+const isPrivateChannel = (channel) => (
+  ['direct', 'group'].includes(channelKind(channel))
+  && Array.isArray(channel.participants)
+);
+
+const hasAccess = (channel, userId) => (
+  !isPrivateChannel(channel) || channel.participants.includes(userId)
+);
+
+const emitToChannel = (app, channel, eventName, payload) => {
+  if (isPrivateChannel(channel)) {
+    channel.participants.forEach((userId) => {
+      app.io.to(`user:${userId}`).emit(eventName, payload);
+    });
+    return;
+  }
+  app.io.emit(eventName, payload);
+};
+
+const findPrivateChannel = (state, firstId, secondId) => (
+  state.channels.find((channel) => (
+    channelKind(channel) === 'direct'
+    && channel.participants.includes(firstId)
+    && channel.participants.includes(secondId)
+  ))
+);
+
+const findCall = (state, callId) => state.calls.find((call) => call.callId === callId);
+
+const userInLiveCall = (state, userId) => state.calls.some(
+  (call) => call.callerId === userId || call.calleeId === userId,
+);
+
+const isCallParticipant = (call, userId) => Boolean(call && (
+  call.callerId === userId || call.calleeId === userId
+));
+
+const getCallPeer = (call, userId) => (call.callerId === userId ? call.calleeId : call.callerId);
+
+const getOrCreatePrivateChannel = (state, firstId, secondId) => {
+  const existing = findPrivateChannel(state, firstId, secondId);
+  if (existing) return existing;
+
+  const peer = state.users.find((user) => user.id === secondId);
+  const channel = {
+    id: getNextId(),
+    name: peer ? peer.username : 'ЛС',
+    removable: false,
+    private: true,
+    kind: 'direct',
+    participants: [firstId, secondId],
+  };
+  state.channels.push(channel);
+  return channel;
+};
+
+const getCurrentUser = (req, state) => state.users.find((user) => user.id === req.user.userId);
+
+const isGroupOwner = (channel, userId) => (
+  isGroup(channel) && channel.ownerId === userId
+);
+
+const isGroupAdmin = (channel, userId) => (
+  isGroup(channel) && channel.admins.includes(userId)
+);
+
+const isGroupMember = (channel, userId) => (
+  isGroup(channel) && channel.participants.includes(userId)
+);
+
+const isGroupAdminTarget = (channel, targetId) => (
+  channel.admins.includes(targetId)
+);
+
+// Muting and voice restoration: the owner reaches any other member, an admin
+// only a plain one, and nobody reaches the owner.
+const canModerateTarget = (channel, actorId, targetId) => {
+  if (!isGroupMember(channel, targetId)) return false;
+  if (channel.ownerId === targetId) return false;
+  if (isGroupOwner(channel, actorId)) return true;
+  if (isGroupAdmin(channel, actorId)) return !isGroupAdminTarget(channel, targetId);
+  return false;
+};
+
+// Removal is the owner's alone, over any other member.
+const canRemoveTarget = (channel, actorId, targetId) => (
+  isGroupOwner(channel, actorId)
+  && isGroupMember(channel, targetId)
+  && channel.ownerId !== targetId
+);
+
+// Recomrades a group channel's member profiles from its participant ids so the
+// client can render the member list without extra lookups.
+const syncGroupMembers = (state, channel) => {
+  // eslint-disable-next-line no-param-reassign
+  channel.members = channel.participants
+    .map((id) => state.users.find((user) => user.id === id))
+    .filter(Boolean)
+    .map(publicProfile);
+};
+
+const rejectCommand = (acknowledge, message) => {
+  acknowledge({ status: 'error', message });
+};
+
+const findMessageAndChannel = (state, messageId) => {
+  const id = Number(messageId);
+  const message = state.messages.find((candidate) => candidate.id === id);
+  if (!message) return null;
+  const channel = state.channels.find((candidate) => candidate.id === message.channelId);
+  if (!channel) return null;
+  return { message, channel };
+};
+
+// Read state is per user and lives only as long as the messages it refers to.
+const getReadState = (state, userId) => {
+  const key = String(userId);
+  // @ts-ignore
+  if (!state.reads[key]) {
+    // @ts-ignore
+    // eslint-disable-next-line no-param-reassign
+    state.reads[key] = { firstSeenAt: new Date().toISOString(), byChannel: {} };
+  }
+  // @ts-ignore
+  return state.reads[key];
+};
+
+const describeReadState = (state, userId) => {
+  const readState = getReadState(state, userId);
+  return {
+    firstSeenAt: readState.firstSeenAt,
+    // An array, not an object: JSON object keys would turn the numeric channel
+    // ids into strings and break the typed pairing on the client.
+    lastReadAtByChannel: Object.entries(readState.byChannel).map(
+      ([channelId, lastReadAt]) => ({ channelId: Number(channelId), lastReadAt }),
+    ),
+  };
+};
+
+const renderLanding = (port) => `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Chat Backend</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background:#0f1115; color:#e6e6e6; display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
+    .card { max-width: 420px; padding: 2rem; }
+    h1 { font-size: 1.4rem; margin-bottom: .5rem; }
+    p { color:#a0a0a0; line-height:1.5; }
+    a { color:#7dd3fc; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    ul { padding-left: 1.1rem; margin: 1.2rem 0 0; }
+    li { margin-bottom: .4rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Chat Backend</h1>
+    <p>API-сервер учебного мессенджера. Интерфейс развёрнут отдельно.</p>
+    <p class="meta">Сервер и Socket.IO работают на порту <code>${port}</code></p>
+    <ul>
+      <li><a href="${FRONTEND_URL}" target="_blank">Открыть приложение</a></li>
+      <li><a href="${BACKEND_REPO_URL}" target="_blank">Код бэкенда</a></li>
+      <li><a href="${FRONTEND_REPO_URL}" target="_blank">Код фронтенда</a></li>
+    </ul>
+  </div>
+</body>
+</html>`;
+
+const buildState = (defaultState) => {
+  const generalChannelId = getNextId();
+  const randomChannelId = getNextId();
+  const state = {
+    channels: [
+      { id: generalChannelId, name: 'general', removable: false },
+      { id: randomChannelId, name: 'random', removable: false },
+    ],
+    messages: [],
+    currentChannelId: generalChannelId,
+    contactRequests: [],
+    calls: [],
+    reads: {},
+    users: [
+      {
+        id: 1,
+        username: 'admin',
+        email: 'admin@example.com',
+        password: 'admin',
+        avatarUrl: null,
+        contacts: [],
+        role: 'admin',
+      },
+    ],
+  };
+
+  if (defaultState.messages) {
+    // @ts-ignore
+    state.messages.push(...defaultState.messages);
+  }
+  if (defaultState.channels) {
+    state.channels.push(...defaultState.channels);
+  }
+  if (defaultState.currentChannelId) {
+    state.currentChannelId = defaultState.currentChannelId;
+  }
+  if (defaultState.users) {
+    // Default users must carry an `email`, like the seeded admin.
+    state.users.push(...defaultState.users);
+  }
+
+  return state;
+};
+
+export default (app, defaultState = {}) => {
+  const state = buildState(defaultState);
+
+  app.io.on('connect', (socket) => {
+    console.log({ 'socket.id': socket.id, userId: socket.userId });
+
+    socket.on('newMessage', (message, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(message.channelId));
+      if (!channel) {
+        acknowledge({ status: 'error', message: 'Канал не найден' });
+        return;
+      }
+      if (!hasAccess(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Доступ запрещён' });
+        return;
+      }
+
+      if (isGroup(channel)) {
+        const mute = channel.muted.find((entry) => entry.userId === socket.userId);
+        if (mute && new Date(mute.mutedUntil).getTime() > Date.now()) {
+          rejectCommand(acknowledge, 'Вы заглушены в этой группе');
+          return;
+        }
+      }
+
+      const { replyToId, ...messageFields } = message;
+      let replyTo;
+      if (replyToId !== undefined) {
+        const target = findMessageAndChannel(state, replyToId);
+        if (!target || !hasAccess(target.channel, socket.userId)) {
+          acknowledge({ status: 'error', message: 'Сообщение для ответа не найдено' });
+          return;
+        }
+        replyTo = {
+          id: target.message.id,
+          body: target.message.body,
+          username: target.message.username,
+          userId: target.message.userId,
+        };
+        if (target.message.attachment) {
+          replyTo.attachment = target.message.attachment;
+        }
+      }
+
+      const sender = state.users.find((candidate) => candidate.id === socket.userId);
+      const messageWithId = {
+        ...messageFields,
+        id: getNextId(),
+        userId: socket.userId,
+        username: message.username || (sender ? sender.username : ''),
+        createdAt: new Date().toISOString(),
+        edited: false,
+        pinned: false,
+        reactions: [],
+      };
+      if (replyTo) {
+        messageWithId.replyTo = replyTo;
+      }
+      // @ts-ignore
+      state.messages.push(messageWithId);
+      acknowledge({ status: 'ok' });
+
+      if (isPrivateChannel(channel)) {
+        emitToChannel(app, channel, 'newMessage', {
+          ...messageWithId,
+          channel,
+        });
+        return;
+      }
+      app.io.emit('newMessage', messageWithId);
+    });
+
+    socket.on('editMessage', ({ messageId, body }, acknowledge = _.noop) => {
+      const found = findMessageAndChannel(state, messageId);
+      if (!found) {
+        acknowledge({ status: 'error', message: 'Сообщение не найдено' });
+        return;
+      }
+      const { message, channel } = found;
+      if (!hasAccess(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Доступ запрещён' });
+        return;
+      }
+      const isAuthor = message.userId === socket.userId;
+      if (!isAuthor && !isAdminUser(state, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Нельзя редактировать сообщение' });
+        return;
+      }
+
+      message.body = String(body ?? '');
+      message.edited = true;
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'messageEdited', message);
+    });
+
+    socket.on('deleteMessage', ({ messageId }, acknowledge = _.noop) => {
+      const found = findMessageAndChannel(state, messageId);
+      if (!found) {
+        acknowledge({ status: 'error', message: 'Сообщение не найдено' });
+        return;
+      }
+      const { message, channel } = found;
+      if (!hasAccess(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Доступ запрещён' });
+        return;
+      }
+      const isAuthor = message.userId === socket.userId;
+      if (!isAuthor && !isAdminUser(state, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Нельзя удалить сообщение' });
+        return;
+      }
+
+      state.messages = state.messages.filter((candidate) => candidate.id !== message.id);
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'messageDeleted', {
+        messageId: message.id,
+        channelId: channel.id,
+      });
+    });
+
+    socket.on('pinMessage', ({ messageId, pinned }, acknowledge = _.noop) => {
+      const found = findMessageAndChannel(state, messageId);
+      if (!found) {
+        acknowledge({ status: 'error', message: 'Сообщение не найдено' });
+        return;
+      }
+      const { message, channel } = found;
+      if (!hasAccess(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Доступ запрещён' });
+        return;
+      }
+      const pinAllowed = !isGroup(channel)
+        && (isPrivateChannel(channel) || isAdminUser(state, socket.userId));
+      if (!pinAllowed) {
+        acknowledge({ status: 'error', message: 'Нельзя закрепить сообщение' });
+        return;
+      }
+
+      message.pinned = Boolean(pinned);
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'messagePinned', {
+        messageId: message.id,
+        channelId: channel.id,
+        pinned: message.pinned,
+      });
+    });
+
+    socket.on('toggleReaction', ({ messageId, emoji }, acknowledge = _.noop) => {
+      const found = findMessageAndChannel(state, messageId);
+      if (!found) {
+        acknowledge({ status: 'error', message: 'Сообщение не найдено' });
+        return;
+      }
+      const { message, channel } = found;
+      if (!hasAccess(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Доступ запрещён' });
+        return;
+      }
+
+      const emojiValue = String(emoji ?? '');
+      if (!emojiValue) {
+        acknowledge({ status: 'error', message: 'Недопустимая реакция' });
+        return;
+      }
+
+      message.reactions ||= [];
+      const reactionIndex = message.reactions.findIndex(
+        (entry) => entry.userId === socket.userId && entry.emoji === emojiValue,
+      );
+      if (reactionIndex !== -1) {
+        message.reactions.splice(reactionIndex, 1);
+      } else {
+        message.reactions.push({ userId: socket.userId, emoji: emojiValue });
+      }
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'messageReacted', message);
+    });
+
+    socket.on('newChannel', (channel, acknowledge = _.noop) => {
+      const channelWithId = {
+        ...channel,
+        kind: 'public',
+        removable: true,
+        id: getNextId(),
+      };
+
+      state.channels.push(channelWithId);
+      acknowledge({ status: 'ok', data: channelWithId });
+      app.io.emit('newChannel', channelWithId);
+    });
+
+    socket.on('removeChannel', ({ id }, acknowledge = _.noop) => {
+      const channelId = Number(id);
+      const channel = state.channels.find((c) => c.id === channelId);
+      if (!channel || isPrivateChannel(channel)) {
+        acknowledge({ status: 'error', message: 'Канал не может быть удалён' });
+        return;
+      }
+
+      state.channels = state.channels.filter((c) => c.id !== channelId);
+      // @ts-ignore
+      state.messages = state.messages.filter((m) => m.channelId !== channelId);
+      const data = { id: channelId };
+
+      acknowledge({ status: 'ok' });
+      app.io.emit('removeChannel', data);
+    });
+
+    socket.on('renameChannel', ({ id, name }, acknowledge = _.noop) => {
+      const channelId = Number(id);
+      const channel = state.channels.find((c) => c.id === channelId);
+      if (!channel || isPrivateChannel(channel)) {
+        acknowledge({ status: 'error', message: 'Канал не может быть переименован' });
+        return;
+      }
+      channel.name = name;
+
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'renameChannel', channel);
+    });
+
+    socket.on('createGroup', ({
+      name, description, avatarUrl, memberIds,
+    }, acknowledge = _.noop) => {
+      const creator = state.users.find((user) => user.id === socket.userId);
+      if (!creator) {
+        rejectCommand(acknowledge, 'Пользователь не найден');
+        return;
+      }
+
+      const trimmedName = String(name ?? '').trim();
+      if (!trimmedName) {
+        rejectCommand(acknowledge, 'Введите название группы');
+        return;
+      }
+
+      const memberSet = new Set(Array.from(memberIds ?? [], (id) => Number(id)));
+      memberSet.delete(socket.userId);
+      const members = [...memberSet];
+      if (members.some((memberId) => !creator.contacts.includes(memberId))) {
+        rejectCommand(acknowledge, 'Можно добавить только своих контактов');
+        return;
+      }
+
+      const channel = {
+        id: getNextId(),
+        kind: 'group',
+        name: trimmedName,
+        description: description ? String(description).trim() : '',
+        avatarUrl: avatarUrl ? String(avatarUrl) : null,
+        removable: false,
+        private: true,
+        ownerId: socket.userId,
+        admins: [],
+        muted: [],
+        participants: [socket.userId, ...members],
+        members: [],
+      };
+      syncGroupMembers(state, channel);
+      state.channels.push(channel);
+      acknowledge({ status: 'ok', data: channel });
+      emitToChannel(app, channel, 'channelUpdated', channel);
+    });
+
+    socket.on('editGroup', ({
+      channelId, name, description, avatarUrl,
+    }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || !isGroup(channel)) {
+        rejectCommand(acknowledge, 'Группа не найдена');
+        return;
+      }
+      if (!isGroupOwner(channel, socket.userId)) {
+        rejectCommand(acknowledge, 'Только владелец может изменять группу');
+        return;
+      }
+      if (name !== undefined) {
+        const trimmedName = String(name ?? '').trim();
+        if (!trimmedName) {
+          rejectCommand(acknowledge, 'Введите название группы');
+          return;
+        }
+        channel.name = trimmedName;
+      }
+      if (description !== undefined) {
+        channel.description = String(description ?? '').trim();
+      }
+      if (avatarUrl !== undefined) {
+        channel.avatarUrl = avatarUrl ? String(avatarUrl) : null;
+      }
+      acknowledge({ status: 'ok', data: channel });
+      emitToChannel(app, channel, 'channelUpdated', channel);
+    });
+
+    socket.on('removeGroup', ({ channelId }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || !isGroup(channel)) {
+        rejectCommand(acknowledge, 'Группа не найдена');
+        return;
+      }
+      if (!isGroupOwner(channel, socket.userId)) {
+        rejectCommand(acknowledge, 'Только владелец может удалить группу');
+        return;
+      }
+      // Membership is still intact while this is emitted, so every participant
+      // hears the removal.
+      emitToChannel(app, channel, 'channelRemoved', { id: channel.id });
+      state.channels = state.channels.filter((c) => c.id !== channel.id);
+      state.messages = state.messages.filter((m) => m.channelId !== channel.id);
+      acknowledge({ status: 'ok' });
+    });
+
+    socket.on('inviteToGroup', ({ channelId, memberIds }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || !isGroup(channel)) {
+        rejectCommand(acknowledge, 'Группа не найдена');
+        return;
+      }
+      if (!isGroupOwner(channel, socket.userId)) {
+        rejectCommand(acknowledge, 'Только владелец может приглашать участников');
+        return;
+      }
+      const owner = state.users.find((user) => user.id === socket.userId);
+      const invited = Array.from(memberIds ?? [], (id) => Number(id));
+      if (invited.some((memberId) => !owner.contacts.includes(memberId))) {
+        rejectCommand(acknowledge, 'Можно пригласить только своих контактов');
+        return;
+      }
+      invited.forEach((memberId) => {
+        if (!channel.participants.includes(memberId)) channel.participants.push(memberId);
+      });
+      syncGroupMembers(state, channel);
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'channelUpdated', channel);
+    });
+
+    socket.on('kickFromGroup', ({ channelId, userId }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || !isGroup(channel)) {
+        rejectCommand(acknowledge, 'Группа не найдена');
+        return;
+      }
+      const targetId = Number(userId);
+      if (!canRemoveTarget(channel, socket.userId, targetId)) {
+        rejectCommand(acknowledge, 'Нет прав на удаление участника');
+        return;
+      }
+      channel.participants = channel.participants.filter((id) => id !== targetId);
+      channel.admins = channel.admins.filter((id) => id !== targetId);
+      channel.muted = channel.muted.filter((entry) => entry.userId !== targetId);
+      syncGroupMembers(state, channel);
+      acknowledge({ status: 'ok' });
+      // The removed user is no longer a participant, so the shared broadcast
+      // would miss them; signal their row removal directly.
+      app.io.to(`user:${targetId}`).emit('channelRemoved', { id: channel.id });
+      emitToChannel(app, channel, 'channelUpdated', channel);
+    });
+
+    socket.on('setGroupAdmin', ({ channelId, userId, admin }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || !isGroup(channel)) {
+        rejectCommand(acknowledge, 'Группа не найдена');
+        return;
+      }
+      const targetId = Number(userId);
+      if (!isGroupOwner(channel, socket.userId) || channel.ownerId === targetId) {
+        rejectCommand(acknowledge, 'Нет прав на изменение ролей');
+        return;
+      }
+      if (!channel.participants.includes(targetId)) {
+        rejectCommand(acknowledge, 'Участник не найден');
+        return;
+      }
+      channel.admins = channel.admins.filter((id) => id !== targetId);
+      if (admin) channel.admins.push(targetId);
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'channelUpdated', channel);
+    });
+
+    socket.on('muteGroupMember', ({ channelId, userId, until }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || !isGroup(channel)) {
+        rejectCommand(acknowledge, 'Группа не найдена');
+        return;
+      }
+      const targetId = Number(userId);
+      if (!canModerateTarget(channel, socket.userId, targetId)) {
+        rejectCommand(acknowledge, 'Нет прав на заглушение участника');
+        return;
+      }
+      const untilDate = new Date(String(until ?? ''));
+      if (Number.isNaN(untilDate.getTime())) {
+        rejectCommand(acknowledge, 'Некорректное время окончания');
+        return;
+      }
+      const untilIso = untilDate.toISOString();
+      channel.muted = channel.muted.filter((entry) => entry.userId !== targetId);
+      channel.muted.push({ userId: targetId, mutedUntil: untilIso });
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'channelUpdated', channel);
+    });
+
+    socket.on('unmuteGroupMember', ({ channelId, userId }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || !isGroup(channel)) {
+        rejectCommand(acknowledge, 'Группа не найдена');
+        return;
+      }
+      const targetId = Number(userId);
+      if (!canModerateTarget(channel, socket.userId, targetId)) {
+        rejectCommand(acknowledge, 'Нет прав на снятие заглушения');
+        return;
+      }
+      channel.muted = channel.muted.filter((entry) => entry.userId !== targetId);
+      acknowledge({ status: 'ok' });
+      emitToChannel(app, channel, 'channelUpdated', channel);
+    });
+
+    socket.on('callOffer', async ({
+      callId, channelId, mode, sdp,
+    }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel || channelKind(channel) !== 'direct') {
+        acknowledge({ status: 'error', message: 'Звонок доступен только в личных чатах' });
+        return;
+      }
+      if (!hasAccess(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Доступ запрещён' });
+        return;
+      }
+      const calleeId = channel.participants.find((id) => id !== socket.userId);
+      const callee = state.users.find((user) => user.id === calleeId);
+      if (!callee) {
+        acknowledge({ status: 'error', message: 'Собеседник не найден' });
+        return;
+      }
+      const calleeRoom = app.io.sockets.adapter.rooms.get(`user:${calleeId}`);
+      if (!calleeRoom || calleeRoom.size === 0) {
+        // Send FCM push notification for offline callee
+        if (callee.fcmToken) {
+          await sendCallPush(callee.fcmToken, {
+            callId,
+            channelId: channel.id,
+            mode,
+            peer: publicProfile(caller || callee),
+          });
+        }
+        acknowledge({ status: 'ok', data: { outcome: 'offline' } });
+        return;
+      }
+      if (userInLiveCall(state, calleeId)) {
+        acknowledge({ status: 'ok', data: { outcome: 'busy' } });
+        return;
+      }
+      const caller = state.users.find((user) => user.id === socket.userId);
+      state.calls.push({
+        callId,
+        callerId: socket.userId,
+        calleeId,
+        callerSocketId: socket.id,
+        calleeSocketId: null,
+        channelId: channel.id,
+        mode: mode === 'video' ? 'video' : 'audio',
+        phase: 'ringing',
+      });
+      app.io.to(`user:${calleeId}`).emit('callIncoming', {
+        callId,
+        channelId: channel.id,
+        mode: mode === 'video' ? 'video' : 'audio',
+        peer: publicProfile(caller || callee),
+        sdp,
+      });
+      acknowledge({ status: 'ok', data: { outcome: 'ringing' } });
+    });
+
+    socket.on('callAnswer', ({ callId, sdp }, acknowledge = _.noop) => {
+      const call = findCall(state, callId);
+      if (!call || call.calleeId !== socket.userId) {
+        acknowledge({ status: 'error', message: 'Звонок не найден' });
+        return;
+      }
+      call.phase = 'active';
+      call.calleeSocketId = socket.id;
+      app.io.to(`user:${call.callerId}`).emit('callAnswered', { callId, sdp });
+      app.io.to(`user:${call.calleeId}`).emit('callActive', { callId });
+      acknowledge({ status: 'ok' });
+    });
+
+    socket.on('callSignal', ({ callId, data }, acknowledge = _.noop) => {
+      const call = findCall(state, callId);
+      if (!isCallParticipant(call, socket.userId)) {
+        acknowledge({ status: 'ok' });
+        return;
+      }
+      const peerId = getCallPeer(call, socket.userId);
+      app.io.to(`user:${peerId}`).emit('callSignal', { callId, data });
+      acknowledge({ status: 'ok' });
+    });
+
+    socket.on('callReject', ({ callId }, acknowledge = _.noop) => {
+      const call = findCall(state, callId);
+      if (call && call.calleeId === socket.userId) {
+        app.io.to(`user:${call.callerId}`).emit('callRejected', { callId });
+        state.calls = state.calls.filter((entry) => entry.callId !== callId);
+      }
+      acknowledge({ status: 'ok' });
+    });
+
+    socket.on('callHangup', ({ callId, reason = 'hangup' }, acknowledge = _.noop) => {
+      const call = findCall(state, callId);
+      if (isCallParticipant(call, socket.userId)) {
+        const peerId = getCallPeer(call, socket.userId);
+        app.io.to(`user:${peerId}`).emit('callEnded', { callId, reason });
+        state.calls = state.calls.filter((entry) => entry.callId !== callId);
+      }
+      acknowledge({ status: 'ok' });
+    });
+
+    socket.on('readChannel', ({ channelId }, acknowledge = _.noop) => {
+      const channel = state.channels.find((c) => c.id === Number(channelId));
+      if (!channel) {
+        acknowledge({ status: 'error', message: 'Канал не найден' });
+        return;
+      }
+      if (!hasAccess(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Доступ запрещён' });
+        return;
+      }
+
+      const lastReadAt = new Date().toISOString();
+      // @ts-ignore
+      getReadState(state, socket.userId).byChannel[channel.id] = lastReadAt;
+      acknowledge({ status: 'ok' });
+
+      // Read state is private, so only the reader's own sessions hear about it.
+      app.io.to(`user:${socket.userId}`).emit('channelRead', { channelId: channel.id, lastReadAt });
+    });
+
+    socket.on('disconnect', () => {
+      const socketCalls = state.calls.filter(
+        (call) => call.callerSocketId === socket.id || call.calleeSocketId === socket.id,
+      );
+      if (socketCalls.length === 0) return;
+      socketCalls.forEach((call) => {
+        const peerId = call.callerSocketId === socket.id ? call.calleeId : call.callerId;
+        const peerSocketId = call.callerSocketId === socket.id
+          ? call.calleeSocketId
+          : call.callerSocketId;
+        if (peerSocketId) {
+          app.io.to(peerSocketId).emit('callEnded', {
+            callId: call.callId,
+            reason: 'disconnected',
+          });
+        } else {
+          app.io.to(`user:${peerId}`).emit('callEnded', {
+            callId: call.callId,
+            reason: 'disconnected',
+          });
+        }
+        state.calls = state.calls.filter((entry) => entry.callId !== call.callId);
+      });
+    });
+  });
+
+  app.post('/api/v1/login', async (req, reply) => {
+    const username = _.get(req.body, 'username');
+    const password = _.get(req.body, 'password');
+
+    if (!username || !password) {
+      reply.code(400).send({ error: 'Введите ник и пароль' });
+      return;
+    }
+
+    const user = state.users.find((u) => u.username === username);
+
+    if (!user || user.password !== password) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const token = app.jwt.sign({ userId: user.id });
+    reply.send({ token, username: user.username });
+  });
+
+  app.post('/api/v1/signup', async (req, reply) => {
+    const username = _.get(req.body, 'username');
+    const password = _.get(req.body, 'password');
+
+    if (!username || !password) {
+      reply.code(400).send({ error: 'Введите ник и пароль' });
+      return;
+    }
+
+    if (state.users.some((u) => u.username === username)) {
+      reply.code(409).send({ error: 'Этот ник уже используется' });
+      return;
+    }
+
+    const newUser = {
+      id: getNextId(), username, password, avatarUrl: null, contacts: [], role: 'user',
+    };
+    const token = app.jwt.sign({ userId: newUser.id });
+    state.users.push(newUser);
+    reply
+      .code(201)
+      .header('Content-Type', 'application/json; charset=utf-8')
+      .send({ token, username });
+  });
+
+  app.get('/api/v1/data', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const channels = state.channels.filter((channel) => hasAccess(channel, user.id));
+    const channelIds = new Set(channels.map((channel) => channel.id));
+    // @ts-ignore
+    const messages = state.messages.filter((message) => channelIds.has(message.channelId));
+    const contacts = state.users
+      .filter((candidate) => user.contacts.includes(candidate.id))
+      .map(publicProfile);
+    const requests = state.contactRequests
+      .filter((request) => (
+        request.toUserId === user.id && request.status === 'pending'
+      ))
+      .map((request) => {
+        const fromUser = state.users.find((candidate) => candidate.id === request.fromUserId);
+        return {
+          id: request.id,
+          from: publicProfile(fromUser),
+          channelId: request.channelId,
+        };
+      });
+    const outgoingRequests = state.contactRequests
+      .filter((request) => request.fromUserId === user.id)
+      .map((request) => {
+        const toUser = state.users.find((candidate) => candidate.id === request.toUserId);
+        return {
+          id: request.id,
+          to: publicProfile(toUser),
+          channelId: request.channelId,
+          status: request.status,
+        };
+      });
+
+    let { currentChannelId } = state;
+    if (!channelIds.has(currentChannelId) && channels.length > 0) {
+      currentChannelId = channels[0].id;
+    }
+
+    reply
+      .header('Content-Type', 'application/json; charset=utf-8')
+      .send({
+        channels,
+        messages,
+        currentChannelId,
+        me: publicProfile(user),
+        contacts,
+        requests,
+        outgoingRequests,
+        readState: describeReadState(state, user.id),
+      });
+  });
+
+  app.post('/api/v1/push-token', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+    const token = _.get(req.body, 'token');
+    if (!token) {
+      reply.code(400).send({ error: 'Token is required' });
+      return;
+    }
+    user.fcmToken = token;
+    reply.send({ ok: true });
+  });
+
+  app
+    .get('/', (_req, reply) => {
+      const { port } = app.server.address();
+      reply.type('text/html; charset=utf-8').send(renderLanding(port));
+    });
+
+  app.post('/api/v1/uploads', async (req, reply) => {
+    const file = await req.file();
+
+    if (!file) {
+      reply.send(new BadRequest('Файл не получен'));
+      return;
+    }
+
+    try {
+      const attachment = await storeUpload(file);
+      reply.send(attachment);
+    } catch (err) {
+      if (err instanceof BadRequest) {
+        reply.send(err);
+        return;
+      }
+      if (err.name === 'RequestFileTooLargeError') {
+        reply.code(err.statusCode || 413).send({ error: 'Файл слишком большой' });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  app.get('/api/v1/users/search', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const query = _.trim(String(req.query.query || '')).toLowerCase();
+    const results = state.users
+      .filter((candidate) => (
+        candidate.id !== user.id
+        && query
+        && candidate.username.toLowerCase().includes(query)
+      ))
+      .map(publicProfile);
+
+    reply.send(results);
+  });
+
+  app.patch('/api/v1/users/me', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const { username, avatarUrl } = req.body || {};
+    let changed = false;
+
+    if (
+      username !== undefined
+      && String(username).trim()
+      && String(username).trim() !== user.username
+    ) {
+      const newUsername = String(username).trim();
+
+      if (state.users.some((candidate) => (
+        candidate.id !== user.id && candidate.username === newUsername
+      ))) {
+        reply.code(409).send({ error: 'Этот ник уже используется' });
+        return;
+      }
+
+      const oldUsername = user.username;
+      user.username = newUsername;
+      // @ts-ignore
+      for (let index = 0; index < state.messages.length; index += 1) {
+        if (state.messages[index].username === oldUsername) {
+          state.messages[index].username = newUsername;
+        }
+      }
+      state.channels.forEach((channel) => {
+        if (
+          channelKind(channel) === 'direct'
+          && channel.participants.includes(user.id)
+          && channel.name === oldUsername
+        ) {
+          const channelIndex = state.channels.indexOf(channel);
+          state.channels.splice(channelIndex, 1, {
+            ...channel,
+            name: newUsername,
+          });
+        }
+      });
+      changed = true;
+    }
+
+    if (avatarUrl !== undefined) {
+      user.avatarUrl = avatarUrl ? String(avatarUrl) : null;
+      changed = true;
+    }
+
+    reply.send(publicProfile(user));
+
+    if (changed) {
+      app.io.emit('userUpdated', {
+        id: user.id,
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+      });
+    }
+  });
+
+  app.post('/api/v1/avatars', { preValidation: [app.authenticate] }, async (req, reply) => {
+    const file = await req.file();
+
+    if (!file) {
+      reply.send(new BadRequest('Файл не получен'));
+      return;
+    }
+
+    try {
+      const avatar = await storeAvatar(file);
+      reply.send(avatar);
+    } catch (err) {
+      if (err instanceof BadRequest) {
+        reply.send(err);
+        return;
+      }
+      if (err.name === 'RequestFileTooLargeError') {
+        reply.code(err.statusCode || 413).send({ error: 'Файл слишком большой' });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  app.post('/api/v1/private-channels', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const targetId = Number(_.get(req.body, 'userId'));
+    const target = state.users.find((candidate) => candidate.id === targetId);
+    if (!target) {
+      reply.code(404).send({ error: 'Пользователь не найден' });
+      return;
+    }
+
+    const channel = getOrCreatePrivateChannel(state, user.id, target.id);
+    reply.send({ channel });
+  });
+
+  app.post('/api/v1/contacts', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const targetId = Number(_.get(req.body, 'userId'));
+    const target = state.users.find((candidate) => candidate.id === targetId);
+    if (!target) {
+      reply.code(404).send({ error: 'Пользователь не найден' });
+      return;
+    }
+
+    const channel = getOrCreatePrivateChannel(state, user.id, target.id);
+
+    if (user.contacts.includes(targetId)) {
+      reply.send({ requestId: null, channel, status: 'accepted' });
+      return;
+    }
+
+    const existing = state.contactRequests.find((request) => (
+      request.status === 'pending'
+      && request.fromUserId === user.id
+      && request.toUserId === targetId
+    ));
+    if (existing) {
+      reply.send({ requestId: existing.id, channel, status: 'pending' });
+      return;
+    }
+
+    const request = {
+      id: getNextId(),
+      fromUserId: user.id,
+      toUserId: targetId,
+      channelId: channel.id,
+      status: 'pending',
+    };
+    state.contactRequests.push(request);
+
+    app.io.to(`user:${targetId}`).emit('contactRequest', {
+      requestId: request.id,
+      from: publicProfile(user),
+      channel,
+    });
+
+    reply.send({ requestId: request.id, channel, status: 'pending' });
+  });
+
+  app.post('/api/v1/contacts/:requestId/accept', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const requestId = Number(req.params.requestId);
+    const request = state.contactRequests.find((candidate) => (
+      candidate.id === requestId && candidate.toUserId === user.id
+    ));
+    if (!request) {
+      reply.code(404).send({ error: 'Запрос не найден' });
+      return;
+    }
+
+    const fromUser = state.users.find((candidate) => candidate.id === request.fromUserId);
+    state.contactRequests = state.contactRequests.filter((candidate) => candidate.id !== requestId);
+
+    if (fromUser) {
+      if (!fromUser.contacts.includes(user.id)) fromUser.contacts.push(user.id);
+      if (!user.contacts.includes(fromUser.id)) user.contacts.push(fromUser.id);
+      app.io.to(`user:${fromUser.id}`).emit('contactAdded', { profile: publicProfile(user) });
+      app.io.to(`user:${user.id}`).emit('contactAdded', { profile: publicProfile(fromUser) });
+    }
+    app.io.to(`user:${fromUser.id}`).emit('contactRequestResolved', { requestId, accepted: true });
+
+    reply.send({ ok: true });
+  });
+
+  app.post('/api/v1/contacts/:requestId/decline', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const requestId = Number(req.params.requestId);
+    const request = state.contactRequests.find((candidate) => (
+      candidate.id === requestId && candidate.toUserId === user.id
+    ));
+    if (!request) {
+      reply.code(404).send({ error: 'Запрос не найден' });
+      return;
+    }
+
+    state.contactRequests = state.contactRequests.filter((candidate) => candidate.id !== requestId);
+    app.io.to(`user:${request.fromUserId}`).emit('contactRequestResolved', { requestId, accepted: false });
+
+    reply.send({ ok: true });
+  });
+
+  app.delete('/api/v1/contacts/:userId', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+
+    const targetId = Number(req.params.userId);
+    if (!user.contacts.includes(targetId)) {
+      reply.code(404).send({ error: 'Контакт не найден' });
+      return;
+    }
+
+    user.contacts = user.contacts.filter((id) => id !== targetId);
+    const target = state.users.find((candidate) => candidate.id === targetId);
+    if (target) {
+      target.contacts = target.contacts.filter((id) => id !== user.id);
+    }
+    app.io.to(`user:${user.id}`).emit('contactRemoved', { userId: targetId });
+    app.io.to(`user:${targetId}`).emit('contactRemoved', { userId: user.id });
+
+    reply.send({ ok: true });
+  });
+};

@@ -1,0 +1,109 @@
+import { create } from 'zustand'
+import type { Channel, ChannelMuteEntry, Message, UserProfile } from '../types'
+import { channelKind, isGroupChannel } from '../utils/channelKind'
+
+export type ChatState = {
+  channels: Channel[]
+  messages: Message[]
+  currentChannelId: number | null
+  error: string | null
+  setInitialData: (channels: Channel[], messages: Message[], currentChannelId: number) => void
+  setActiveChannel: (id: number) => void
+  addMessage: (message: Message) => void
+  updateMessage: (message: Message) => void
+  removeMessage: (id: number) => void
+  setMessagePinned: (id: number, pinned: boolean) => void
+  addChannel: (channel: Channel) => void
+  updateChannel: (channel: Channel) => void
+  renameChannel: (channel: Channel) => void
+  removeChannel: (id: number) => void
+  renameUser: (oldName: string, newName: string) => void
+  setError: (message: string | null) => void
+}
+
+export const useChatStore = create<ChatState>((set) => ({
+  channels: [],
+  messages: [],
+  currentChannelId: null,
+  error: null,
+  setInitialData: (channels, messages, currentChannelId) =>
+    set({ channels, messages, currentChannelId, error: null }),
+  setActiveChannel: (id) => set({ currentChannelId: id }),
+  addMessage: (message) =>
+    set((state) => ({
+      messages: state.messages.some((m) => m.id === message.id)
+        ? state.messages
+        : [...state.messages, message],
+    })),
+  updateMessage: (message) =>
+    set((state) => ({
+      messages: state.messages.some((m) => m.id === message.id)
+        ? state.messages.map((m) => (m.id === message.id ? message : m))
+        : state.messages,
+    })),
+  removeMessage: (id) =>
+    set((state) => ({
+      messages: state.messages.filter((m) => m.id !== id),
+    })),
+  setMessagePinned: (id, pinned) =>
+    set((state) => ({
+      messages: state.messages.map((m) => (m.id === id ? { ...m, pinned } : m)),
+    })),
+  addChannel: (channel) =>
+    set((state) => ({
+      channels: state.channels.some((c) => c.id === channel.id)
+        ? state.channels
+        : [...state.channels, channel],
+      currentChannelId: state.currentChannelId ?? channel.id,
+    })),
+  updateChannel: (channel) =>
+    set((state) => ({
+      channels: state.channels.some((c) => c.id === channel.id)
+        ? state.channels.map((c) => (c.id === channel.id ? channel : c))
+        : [...state.channels, channel],
+    })),
+  renameChannel: (channel) =>
+    set((state) => ({
+      channels: state.channels.map((c) => (c.id === channel.id ? channel : c)),
+    })),
+  removeChannel: (id) =>
+    set((state) => {
+      const channels = state.channels.filter((c) => c.id !== id)
+      const messages = state.messages.filter((m) => m.channelId !== id)
+      const currentChannelId =
+        state.currentChannelId === id ? (channels[0]?.id ?? null) : state.currentChannelId
+      return { channels, messages, currentChannelId }
+    }),
+  renameUser: (oldName, newName) =>
+    set((state) => ({
+      messages: state.messages.map((m) => (m.username === oldName ? { ...m, username: newName } : m)),
+      channels: state.channels.map((c) =>
+        !isGroupChannel(c) && channelKind(c) === 'direct' && c.name === oldName
+          ? { ...c, name: newName }
+          : c,
+      ),
+    })),
+  setError: (message) => set({ error: message }),
+}))
+
+export function selectActiveChannelMessages(state: ChatState): Message[] {
+  return state.messages
+    .filter((m) => m.channelId === state.currentChannelId)
+    .sort((a, b) => a.id - b.id)
+}
+
+export function selectPinnedMessage(state: ChatState): Message | null {
+  return (
+    state.messages.find((m) => m.channelId === state.currentChannelId && m.pinned) ?? null
+  )
+}
+
+export function useChannelMute(me: UserProfile | null): ChannelMuteEntry | null {
+  const channelId = useChatStore((state) => state.currentChannelId)
+  const muted = useChatStore((state) => {
+    const channel = state.channels.find((c) => c.id === channelId)
+    return channel && isGroupChannel(channel) ? (channel.muted ?? null) : null
+  })
+  if (!me || !muted) return null
+  return muted.find((entry) => entry.userId === me.id) ?? null
+}

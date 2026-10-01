@@ -1,0 +1,5 @@
+allowBuilds:
+  '@parcel/watcher': true
+  '@wick_studio/fastify-socket.io': true
+  unrs-resolver: true
+

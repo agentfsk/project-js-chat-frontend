@@ -1,0 +1,29 @@
+{
+  "name": "@messenger/shared",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./types": "./dist/types.js",
+    "./api": "./dist/api/index.js",
+    "./store": "./dist/store/index.js",
+    "./socket": "./dist/socket.js",
+    "./callManager": "./dist/callManager.js",
+    "./webrtc": "./dist/webrtc.rn.js",
+    "./utils": "./dist/utils/index.js",
+    "./storage": "./dist/storage.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b --watch"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.3",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "typescript": "~6.0.2"
+  }
+}

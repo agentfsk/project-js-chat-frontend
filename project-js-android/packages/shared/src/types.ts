@@ -1,0 +1,129 @@
+export type ChannelKind = 'public' | 'direct' | 'group'
+
+export type ChannelMuteEntry = {
+  userId: number
+  mutedUntil: string
+}
+
+export type Channel = {
+  id: number
+  name: string
+  removable: boolean
+  private?: boolean
+  participants?: number[]
+  kind?: ChannelKind
+  description?: string
+  avatarUrl?: string | null
+  ownerId?: number
+  admins?: number[]
+  muted?: ChannelMuteEntry[]
+  members?: UserProfile[]
+}
+
+export type UserProfile = {
+  id: number
+  username: string
+  avatarUrl: string | null
+  role?: 'admin' | 'user'
+}
+
+export type ContactRequest = {
+  id: number
+  from: UserProfile
+  channelId: number
+}
+
+export type OutgoingContactRequest = {
+  id: number
+  to: UserProfile
+  channelId: number
+  status: 'pending' | 'accepted' | 'declined'
+}
+
+export type Attachment = {
+  name: string
+  mime: string
+  size: number
+  url: string
+  width?: number
+  height?: number
+}
+
+export type MessageReaction = {
+  userId: number
+  emoji: string
+}
+
+export type MessageReplyTo = {
+  id: number
+  body: string
+  username: string
+  userId: number
+  attachment?: Attachment
+}
+
+export type Message = {
+  id: number
+  body: string
+  channelId: number
+  username: string
+  userId: number
+  createdAt?: string
+  edited: boolean
+  pinned: boolean
+  attachment?: Attachment
+  reactions?: MessageReaction[]
+  replyTo?: MessageReplyTo
+}
+
+export type ChannelReadEntry = {
+  channelId: number
+  lastReadAt: string
+}
+
+export type ReadState = {
+  firstSeenAt: string
+  lastReadAtByChannel: ChannelReadEntry[]
+}
+
+export type CallMode = 'audio' | 'video'
+
+export type CallPhase = 'idle' | 'calling' | 'ringing' | 'active' | 'ended'
+
+export type CallSignalData =
+  | { type: 'ice'; candidate: RTCIceCandidateInit | null }
+  | { type: 'offer'; sdp: string }
+  | { type: 'answer'; sdp: string }
+
+export type CallOfferOutcome = 'ringing' | 'offline' | 'busy'
+
+export type CallIncomingPayload = {
+  callId: string
+  channelId: number
+  mode: CallMode
+  peer: UserProfile
+  sdp: string
+}
+
+export type CallAnsweredPayload = {
+  callId: string
+  sdp: string
+}
+
+export type CallSignalPayload = {
+  callId: string
+  data: CallSignalData
+}
+
+export type CallEndedPayload = {
+  callId: string
+  reason: string
+}
+
+export type CallRejectedPayload = {
+  callId: string
+}
+
+export type CallActivePayload = {
+  callId: string
+}
