@@ -127,3 +127,32 @@ export type CallRejectedPayload = {
 export type CallActivePayload = {
   callId: string
 }
+
+export type CallKeyPackage = {
+  identityKey: string
+  signedPreKey: {
+    keyId: number
+    publicKey: string
+    signature: string
+  }
+  oneTimePreKey?: {
+    keyId: number
+    publicKey: string
+  }
+  ephemeralKey: string
+}
+
+export type E2EEContext = {
+  encryptor: any
+  decryptor: any
+  ratchet: any
+  safetyNumber: bigint
+  keyId: number
+}
+
+export type SafetyNumber = {
+  fingerprint: bigint
+  formatted: string
+  qrData: string
+  verified: boolean
+}

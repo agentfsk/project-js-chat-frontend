@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CallIncomingPayload, CallMode, CallPhase, UserProfile } from '../types'
+import type { CallIncomingPayload, CallMode, CallPhase, UserProfile, CallKeyPackage } from '../types'
 
 type Direction = 'outgoing' | 'incoming'
 
@@ -17,19 +17,24 @@ export type CallState = {
   localStream: MediaStream | null
   remoteStream: MediaStream | null
   remoteVideo: boolean
+  safetyNumber: bigint | null
+  localKeyPackage: CallKeyPackage | null
+  remoteKeyPackage: CallKeyPackage | null
   beginOutgoing: (params: {
     callId: string
     channelId: number
     mode: CallMode
     peer: UserProfile
+    localKeyPackage?: CallKeyPackage
   }) => void
-  beginIncoming: (payload: CallIncomingPayload) => void
+  beginIncoming: (payload: CallIncomingPayload & { keyPackage?: CallKeyPackage }) => void
   activate: () => void
   setStreams: (streams: { localStream: MediaStream | null; remoteStream: MediaStream | null }) => void
   setMic: (on: boolean) => void
   setCam: (on: boolean) => void
   setScreen: (on: boolean) => void
   setRemoteVideo: (on: boolean) => void
+  setSafetyNumber: (safetyNumber: bigint | null) => void
   end: (error?: string) => void
   setError: (error: string | null) => void
   clear: () => void
@@ -49,11 +54,14 @@ const initial = {
   localStream: null,
   remoteStream: null,
   remoteVideo: false,
+  safetyNumber: null as bigint | null,
+  localKeyPackage: null as CallKeyPackage | null,
+  remoteKeyPackage: null as CallKeyPackage | null,
 }
 
 export const useCallStore = create<CallState>((set) => ({
   ...initial,
-  beginOutgoing: ({ callId, channelId, mode, peer }) =>
+  beginOutgoing: ({ callId, channelId, mode, peer, localKeyPackage }) =>
     set({
       ...initial,
       phase: 'calling',
@@ -64,6 +72,7 @@ export const useCallStore = create<CallState>((set) => ({
       peer,
       micOn: true,
       camOn: mode === 'video',
+      localKeyPackage: localKeyPackage ?? null,
     }),
   beginIncoming: (payload) =>
     set({
@@ -76,6 +85,7 @@ export const useCallStore = create<CallState>((set) => ({
       peer: payload.peer,
       micOn: true,
       camOn: payload.mode === 'video',
+      remoteKeyPackage: payload.keyPackage ?? null,
     }),
   activate: () => set({ phase: 'active', error: null }),
   setStreams: ({ localStream, remoteStream }) => set({ localStream, remoteStream }),
@@ -83,6 +93,7 @@ export const useCallStore = create<CallState>((set) => ({
   setCam: (on) => set({ camOn: on }),
   setScreen: (on) => set({ screenOn: on }),
   setRemoteVideo: (on) => set({ remoteVideo: on }),
+  setSafetyNumber: (safetyNumber) => set({ safetyNumber }),
   end: (error) => set({ phase: 'ended', error: error ?? null }),
   setError: (error) => set({ error }),
   clear: () => set({ ...initial }),

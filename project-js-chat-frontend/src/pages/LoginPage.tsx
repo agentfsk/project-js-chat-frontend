@@ -6,14 +6,11 @@ import ThemeToggle from '../components/ThemeToggle'
 
 type Mode = 'login' | 'signup'
 
-function isValidEmail(email: string): boolean {
-  return /.+@.+\..+/.test(email.trim())
-}
-
 function describeError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 0) return 'Не удалось подключиться к серверу'
-    if (error.status === 401) return 'Неверный email/ник или пароль'
+    if (error.status === 401) return 'Неверный ник или пароль'
+    if (error.status === 409) return 'Этот ник уже используется'
     return error.message
   }
   return 'Что-то пошло не так'
@@ -22,7 +19,6 @@ function describeError(error: unknown): string {
 function LoginPage() {
   const [mode, setMode] = useState<Mode>('login')
   const [identifier, setIdentifier] = useState('')
-  const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -39,17 +35,13 @@ function LoginPage() {
     const isLogin = mode === 'login'
     if (submitting) return
     if (isLogin && (!identifier.trim() || !password)) return
-    if (!isLogin && (!email.trim() || !username.trim() || !password)) return
-    if (!isLogin && !isValidEmail(email)) {
-      setError('Введите корректный email')
-      return
-    }
+    if (!isLogin && (!username.trim() || !password)) return
     setSubmitting(true)
     setError(null)
     try {
       const session = isLogin
         ? await login(identifier.trim(), password)
-        : await signup(email.trim(), username.trim(), password)
+        : await signup(username.trim(), password)
       setSession(session.token, session.username)
     } catch (caught) {
       setError(describeError(caught))
@@ -81,7 +73,7 @@ function LoginPage() {
         </div>
         {mode === 'login' ? (
           <label>
-            Email или ник
+            Ник
             <input
               value={identifier}
               onChange={(event) => setIdentifier(event.target.value)}
@@ -89,25 +81,14 @@ function LoginPage() {
             />
           </label>
         ) : (
-          <>
-            <label>
-              Email
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="email"
-              />
-            </label>
-            <label>
-              Ник
-              <input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="nickname"
-              />
-            </label>
-          </>
+          <label>
+            Ник
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="nickname"
+            />
+          </label>
         )}
         <label>
           Пароль

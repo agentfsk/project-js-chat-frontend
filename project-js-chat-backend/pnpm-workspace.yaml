@@ -1,5 +1,6 @@
 allowBuilds:
+  '@firebase/util': set this to true or false
   '@parcel/watcher': true
   '@wick_studio/fastify-socket.io': true
+  protobufjs: set this to true or false
   unrs-resolver: true
-

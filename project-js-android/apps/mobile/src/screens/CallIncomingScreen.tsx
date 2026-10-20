@@ -6,7 +6,9 @@ import { useCallStore } from '@shared/store/calls'
 import { accept, decline, onCallEnded } from '@shared/callManager'
 import { BACKEND_URL } from '../config'
 
-type CallIncomingRouteParams = { callId: string; channelId: number; mode: 'audio' | 'video'; peer: any }
+import type { CallKeyPackage } from '@shared/types'
+
+type CallIncomingRouteParams = { callId: string; channelId: number; mode: 'audio' | 'video'; peer: any; keyPackage?: CallKeyPackage }
 type CallIncomingRouteProp = RouteProp<{ CallIncoming: CallIncomingRouteParams }, 'CallIncoming'>
 type RootStackParamList = { CallActive: { callId: string; channelId: number; mode: 'audio' | 'video'; peer: any } }
 

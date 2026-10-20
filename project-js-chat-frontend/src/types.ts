@@ -127,3 +127,40 @@ export type CallRejectedPayload = {
 export type CallActivePayload = {
   callId: string
 }
+
+export type CallKeyPackage = {
+  identityKey: string
+  signedPreKey: {
+    keyId: number
+    publicKey: string
+    signature: string
+  }
+  oneTimePreKey?: {
+    keyId: number
+    publicKey: string
+  }
+  ephemeralKey: string
+}
+
+export type E2EEContext = {
+  encryptor: any
+  decryptor: any
+  ratchet: any
+  safetyNumber: bigint
+  keyId: number
+  localKeyPackage: CallKeyPackage
+  remoteKeyPackage: CallKeyPackage | null
+}
+
+export type PreKeyBundle = {
+  identityKey: string
+  signedPreKey: {
+    keyId: number
+    publicKey: string
+    signature: string
+  }
+  oneTimePreKey?: {
+    keyId: number
+    publicKey: string
+  }
+}

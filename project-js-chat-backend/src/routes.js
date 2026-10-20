@@ -222,6 +222,11 @@ const buildState = (defaultState) => {
         avatarUrl: null,
         contacts: [],
         role: 'admin',
+        identityKey: null,
+        signedPreKey: null,
+        preKeys: [],
+        preKeySignatures: [],
+        fcmToken: null,
       },
     ],
   };
@@ -663,7 +668,7 @@ export default (app, defaultState = {}) => {
     });
 
     socket.on('callOffer', async ({
-      callId, channelId, mode, sdp,
+      callId, channelId, mode, sdp, keyPackage,
     }, acknowledge = _.noop) => {
       const channel = state.channels.find((c) => c.id === Number(channelId));
       if (!channel || channelKind(channel) !== 'direct') {
@@ -689,6 +694,7 @@ export default (app, defaultState = {}) => {
             channelId: channel.id,
             mode,
             peer: publicProfile(caller || callee),
+            keyPackage,
           });
         }
         acknowledge({ status: 'ok', data: { outcome: 'offline' } });
@@ -715,11 +721,12 @@ export default (app, defaultState = {}) => {
         mode: mode === 'video' ? 'video' : 'audio',
         peer: publicProfile(caller || callee),
         sdp,
+        keyPackage,
       });
       acknowledge({ status: 'ok', data: { outcome: 'ringing' } });
     });
 
-    socket.on('callAnswer', ({ callId, sdp }, acknowledge = _.noop) => {
+    socket.on('callAnswer', ({ callId, sdp, keyPackage }, acknowledge = _.noop) => {
       const call = findCall(state, callId);
       if (!call || call.calleeId !== socket.userId) {
         acknowledge({ status: 'error', message: 'Звонок не найден' });
@@ -727,7 +734,7 @@ export default (app, defaultState = {}) => {
       }
       call.phase = 'active';
       call.calleeSocketId = socket.id;
-      app.io.to(`user:${call.callerId}`).emit('callAnswered', { callId, sdp });
+      app.io.to(`user:${call.callerId}`).emit('callAnswered', { callId, sdp, keyPackage });
       app.io.to(`user:${call.calleeId}`).emit('callActive', { callId });
       acknowledge({ status: 'ok' });
     });
@@ -923,6 +930,68 @@ export default (app, defaultState = {}) => {
     }
     user.fcmToken = token;
     reply.send({ ok: true });
+  });
+
+  app.get('/api/v1/keys/bundle/:userId', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+    const targetId = Number(req.params.userId);
+    const target = state.users.find((candidate) => candidate.id === targetId);
+    if (!target) {
+      reply.code(404).send({ error: 'User not found' });
+      return;
+    }
+    if (!target.identityKey || !target.signedPreKey) {
+      reply.code(404).send({ error: 'Key bundle not available' });
+      return;
+    }
+    const oneTimePreKey = target.preKeys?.length ? target.preKeys.shift() : null
+    reply.send({
+      identityKey: target.identityKey,
+      signedPreKey: {
+        keyId: target.signedPreKey.keyId,
+        publicKey: target.signedPreKey.publicKey,
+        signature: target.signedPreKey.signature,
+      },
+      oneTimePreKey: oneTimePreKey ? {
+        keyId: oneTimePreKey.keyId,
+        publicKey: oneTimePreKey.publicKey,
+      } : undefined,
+    });
+  });
+
+  app.post('/api/v1/keys/prekeys', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+    const { signedPreKey, oneTimePreKeys } = req.body || {}
+    if (signedPreKey) {
+      user.signedPreKey = signedPreKey
+    }
+    if (oneTimePreKeys) {
+      user.preKeys = oneTimePreKeys
+    }
+    reply.send({ ok: true })
+  });
+
+  app.post('/api/v1/keys/identity', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+    const { identityKey } = req.body || {}
+    if (!identityKey) {
+      reply.code(400).send({ error: 'Identity key required' })
+      return
+    }
+    user.identityKey = identityKey
+    reply.send({ ok: true })
   });
 
   app

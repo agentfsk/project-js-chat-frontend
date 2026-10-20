@@ -8,6 +8,8 @@ import type {
   CallSignalData,
   CallSignalPayload,
   UserProfile,
+  CallKeyPackage,
+  E2EEContext,
 } from './types'
 import { useCallStore } from './store/calls'
 import { CallEngine } from './webrtc'
@@ -18,11 +20,117 @@ import {
   emitCallReject,
   emitCallSignal,
 } from './socket'
+import { generateIdentityKeyPair, generateSignedPreKeyPair, generatePreKeyPair, generatePreKeyBundle, createKeyPackage, computeSharedSecret, parseKeyPackage, type IdentityKeyPair, type SignedPreKeyPair, type PreKeyPair } from './crypto/x3dh'
+import { DoubleRatchet } from './crypto/doubleRatchet'
+import { computeSafetyNumber } from './crypto/safetyNumber'
+import { SFrameEncryptor, SFrameDecryptor } from './crypto/sframe'
 
 const RING_TIMEOUT_MS = 30_000
-const ENDED_DISMISS_MS = 4_000
+const PRE_KEY_COUNT = 100
+
+let identityKeyPair: IdentityKeyPair | null = null
+let signedPreKeyPair: SignedPreKeyPair | null = null
+let preKeys: PreKeyPair[] = []
+
+async function initializeIdentityKeys(): Promise<void> {
+  const storedIdentity = localStorage.getItem('messenger_identity_key_pair')
+  if (storedIdentity) {
+    identityKeyPair = JSON.parse(storedIdentity)
+  } else {
+    identityKeyPair = generateIdentityKeyPair()
+    localStorage.setItem('messenger_identity_key_pair', JSON.stringify(identityKeyPair))
+  }
+
+  const storedSignedPreKey = localStorage.getItem('messenger_signed_pre_key')
+  if (storedSignedPreKey) {
+    signedPreKeyPair = JSON.parse(storedSignedPreKey)
+  } else if (identityKeyPair) {
+    signedPreKeyPair = generateSignedPreKeyPair(identityKeyPair.privateKey, Date.now())
+    localStorage.setItem('messenger_signed_pre_key', JSON.stringify(signedPreKeyPair))
+  } else {
+    throw new Error('Identity key pair not available')
+  }
+
+  const storedPreKeys = localStorage.getItem('messenger_pre_keys')
+  if (storedPreKeys) {
+    preKeys = JSON.parse(storedPreKeys)
+  } else {
+    preKeys = []
+  }
+
+  if (preKeys.length < PRE_KEY_COUNT) {
+    const newPreKeys: PreKeyPair[] = []
+    for (let i = 0; i < PRE_KEY_COUNT - preKeys.length; i++) {
+      newPreKeys.push(generatePreKeyPair(Date.now() + i))
+    }
+    preKeys = [...preKeys, ...newPreKeys]
+    localStorage.setItem('messenger_pre_keys', JSON.stringify(preKeys))
+  }
+}
+
+function getKeyPackage(): CallKeyPackage | null {
+  if (!identityKeyPair || !signedPreKeyPair || preKeys.length === 0) {
+    return null
+  }
+  const ephemeralKeyPair = { privateKey: generateIdentityKeyPair().privateKey, publicKey: generateIdentityKeyPair().publicKey }
+  const oneTimePreKey = preKeys.shift()!
+  const preKeyBundle = generatePreKeyBundle(identityKeyPair, signedPreKeyPair, preKeys)
+  const keyPackage = createKeyPackage(preKeyBundle, ephemeralKeyPair, oneTimePreKey)
+  localStorage.setItem('messenger_pre_keys', JSON.stringify(preKeys))
+  return keyPackage
+}
+
+function createE2EEContext(
+  _callId: string,
+  isInitiator: boolean,
+  localKeyPackage: CallKeyPackage,
+  remoteKeyPackage: CallKeyPackage
+): E2EEContext {
+  const localIdentityKey = parseKeyPackage(localKeyPackage).identityKey
+  const remoteIdentityKey = parseKeyPackage(remoteKeyPackage).identityKey
+  const safetyNumber = computeSafetyNumber(localIdentityKey, remoteIdentityKey)
+
+  const preKeyBundle = parseKeyPackage(remoteKeyPackage)
+  const ephemeralKeyPair = generateIdentityKeyPair()
+  if (!identityKeyPair || !signedPreKeyPair) {
+    throw new Error('Identity keys not initialized')
+  }
+  const sharedSecret = computeSharedSecret(
+    identityKeyPair,
+    signedPreKeyPair,
+    preKeys[0] ?? undefined,
+    ephemeralKeyPair,
+    remoteKeyPackage
+  )
+
+  const ratchet = new DoubleRatchet()
+  if (isInitiator) {
+    ratchet.initialize(sharedSecret, ephemeralKeyPair, preKeyBundle.ephemeralKey)
+  } else {
+    ratchet.initializeAsResponder(sharedSecret, preKeyBundle.ephemeralKey)
+  }
+
+  const sendingKey = ratchet.ratchetSend().messageKey
+  const receivingKey = ratchet.ratchetReceive({ dh: preKeyBundle.ephemeralKey, pn: 0, n: 0 })
+
+  const encryptor = new SFrameEncryptor(sendingKey, 0)
+  const decryptor = new SFrameDecryptor(receivingKey, 0)
+
+  return {
+    encryptor,
+    decryptor,
+    ratchet,
+    safetyNumber,
+    keyId: 0,
+    localKeyPackage,
+    remoteKeyPackage,
+  }
+}
 
 let engine: CallEngine | null = null
+let e2eeContext: E2EEContext | null = null
+const ENDED_DISMISS_MS = 4_000
+
 let pendingOfferSdp: string | null = null
 let pendingSignals: CallSignalData[] = []
 let ringTimeout: ReturnType<typeof setTimeout> | null = null
@@ -56,6 +164,7 @@ function teardownEngine(): void {
     engine.teardown()
     engine = null
   }
+  e2eeContext = null
   pendingOfferSdp = null
   pendingSignals = []
 }
@@ -70,6 +179,7 @@ function createEngine(polite: boolean): CallEngine {
   teardownEngine()
   engine = new CallEngine({
     polite,
+    encryptionContext: e2eeContext ?? undefined,
     onSignal: (data) => {
       const state = useCallStore.getState()
       if (state.callId) void emitCallSignal(state.callId, data).catch(() => {})
@@ -119,8 +229,16 @@ export async function startCall(params: {
   if (state.phase !== 'idle' && state.phase !== 'ended') return
   cancelClearTimeout()
 
+  await initializeIdentityKeys()
+
+  const localKeyPackage = getKeyPackage()
+  if (!localKeyPackage) {
+    endCall('E2EE keys not available')
+    return
+  }
+
   const callId = crypto.randomUUID()
-  state.beginOutgoing({ callId, channelId: params.channelId, mode: params.mode, peer: params.peer })
+  state.beginOutgoing({ callId, channelId: params.channelId, mode: params.mode, peer: params.peer, localKeyPackage })
 
   const localEngine = createEngine(false)
   try {
@@ -140,7 +258,7 @@ export async function startCall(params: {
   }
 
   try {
-    const result = await emitCallOffer({ callId, channelId: params.channelId, mode: params.mode, sdp: offer })
+    const result = await emitCallOffer({ callId, channelId: params.channelId, mode: params.mode, sdp: offer, keyPackage: localKeyPackage })
     if (result.outcome === 'offline') {
       endCall('Пользователь не в сети')
       return
@@ -166,6 +284,20 @@ export async function accept(): Promise<void> {
   const offerSdp = pendingOfferSdp
   if (!callId || !offerSdp) return
 
+  await initializeIdentityKeys()
+
+  const localKeyPackage = getKeyPackage()
+  if (!localKeyPackage) {
+    endCall('E2EE keys not available')
+    return
+  }
+
+  const remoteKeyPackage = state.remoteKeyPackage
+  if (remoteKeyPackage) {
+    e2eeContext = createE2EEContext(callId, false, localKeyPackage, remoteKeyPackage)
+    useCallStore.getState().setSafetyNumber(e2eeContext.safetyNumber)
+  }
+
   const localEngine = createEngine(true)
   try {
     await localEngine.startLocalMedia(mode)
@@ -189,7 +321,7 @@ export async function accept(): Promise<void> {
   }
   state.activate()
   pendingOfferSdp = null
-  void emitCallAnswer(callId, answer).catch((err: unknown) => {
+  void emitCallAnswer(callId, answer, localKeyPackage).catch((err: unknown) => {
     endCall(err instanceof Error ? err.message : 'Не удалось ответить на звонок')
   })
 }
@@ -271,7 +403,7 @@ export async function stopShare(): Promise<void> {
   state.setScreen(false)
 }
 
-export function onCallIncoming(payload: CallIncomingPayload): void {
+export function onCallIncoming(payload: CallIncomingPayload & { keyPackage?: CallKeyPackage }): void {
   const state = useCallStore.getState()
   if (state.phase === 'calling' || state.phase === 'ringing' || state.phase === 'active') return
   cancelClearTimeout()
@@ -281,7 +413,7 @@ export function onCallIncoming(payload: CallIncomingPayload): void {
   startRingTimeout(payload.callId)
 }
 
-export function onCallAnswered(payload: CallAnsweredPayload): void {
+export function onCallAnswered(payload: CallAnsweredPayload & { keyPackage?: CallKeyPackage }): void {
   const state = useCallStore.getState()
   if (state.phase !== 'calling' || state.callId !== payload.callId) return
   cancelRingTimeout()
@@ -289,6 +421,15 @@ export function onCallAnswered(payload: CallAnsweredPayload): void {
   engine
     .handleSignal({ type: 'answer', sdp: payload.sdp })
     .catch(() => endCall('Не удалось установить соединение'))
+  
+  if (payload.keyPackage && e2eeContext) {
+    const localKeyPackage = state.localKeyPackage
+    if (localKeyPackage) {
+      e2eeContext = createE2EEContext(payload.callId, true, localKeyPackage, payload.keyPackage)
+      useCallStore.getState().setSafetyNumber(e2eeContext.safetyNumber)
+    }
+  }
+  
   state.activate()
 }
 

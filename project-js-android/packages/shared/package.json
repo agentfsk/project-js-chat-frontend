@@ -12,13 +12,17 @@
     "./callManager": "./dist/callManager.js",
     "./webrtc": "./dist/webrtc.rn.js",
     "./utils": "./dist/utils/index.js",
-    "./storage": "./dist/storage.js"
+    "./storage": "./dist/storage.js",
+    "./crypto": "./dist/crypto/index.js"
   },
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -b --watch"
   },
   "dependencies": {
+    "@noble/ciphers": "^1.3.0",
+    "@noble/curves": "^1.4.0",
+    "@noble/hashes": "^1.4.0",
     "socket.io-client": "^4.8.3",
     "zustand": "^5.0.15"
   },

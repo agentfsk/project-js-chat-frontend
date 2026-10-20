@@ -6,7 +6,7 @@ import { useUsersStore } from './store/users'
 import { useAuthStore } from './store/auth'
 import { attachmentKind, shouldAnnounce, toastPreview, useToastStore } from './store/toasts'
 import * as callManager from './callManager'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage } from './types'
 
 type AckPayload = { status: string; message?: string; data?: unknown }
 
@@ -251,12 +251,13 @@ export function emitCallOffer(payload: {
   channelId: number
   mode: CallMode
   sdp: string
+  keyPackage?: CallKeyPackage
 }): Promise<{ outcome: 'ringing' | 'offline' | 'busy' }> {
   return emitWithAck<{ outcome: 'ringing' | 'offline' | 'busy' }>('callOffer', payload)
 }
 
-export function emitCallAnswer(callId: string, sdp: string): Promise<void> {
-  return emitWithAck<void>('callAnswer', { callId, sdp })
+export function emitCallAnswer(callId: string, sdp: string, keyPackage?: CallKeyPackage): Promise<void> {
+  return emitWithAck<void>('callAnswer', { callId, sdp, keyPackage })
 }
 
 export function emitCallSignal(callId: string, data: CallSignalData): Promise<void> {

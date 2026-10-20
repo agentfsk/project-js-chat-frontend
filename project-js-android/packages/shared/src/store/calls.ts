@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CallIncomingPayload, CallMode, CallPhase, UserProfile } from '../types'
+import type { CallIncomingPayload, CallMode, CallPhase, UserProfile, CallKeyPackage } from '../types'
 
 type Direction = 'outgoing' | 'incoming'
 
@@ -19,13 +19,16 @@ export type CallState = {
   localStream: GenericStream | null
   remoteStream: GenericStream | null
   remoteVideo: boolean
+  localKeyPackage: CallKeyPackage | null
+  remoteKeyPackage: CallKeyPackage | null
   beginOutgoing: (params: {
     callId: string
     channelId: number
     mode: CallMode
     peer: UserProfile
+    localKeyPackage?: CallKeyPackage
   }) => void
-  beginIncoming: (payload: CallIncomingPayload) => void
+  beginIncoming: (payload: CallIncomingPayload & { keyPackage?: CallKeyPackage }) => void
   activate: () => void
   setStreams: (streams: { localStream: GenericStream | null; remoteStream: GenericStream | null }) => void
   setMic: (on: boolean) => void
@@ -51,11 +54,13 @@ const initial = {
   localStream: null,
   remoteStream: null,
   remoteVideo: false,
+  localKeyPackage: null as CallKeyPackage | null,
+  remoteKeyPackage: null as CallKeyPackage | null,
 }
 
 export const useCallStore = create<CallState>((set) => ({
   ...initial,
-  beginOutgoing: ({ callId, channelId, mode, peer }) =>
+  beginOutgoing: ({ callId, channelId, mode, peer, localKeyPackage }) =>
     set({
       ...initial,
       phase: 'calling',
@@ -66,6 +71,7 @@ export const useCallStore = create<CallState>((set) => ({
       peer,
       micOn: true,
       camOn: mode === 'video',
+      localKeyPackage: localKeyPackage ?? null,
     }),
   beginIncoming: (payload) =>
     set({
@@ -78,6 +84,7 @@ export const useCallStore = create<CallState>((set) => ({
       peer: payload.peer,
       micOn: true,
       camOn: payload.mode === 'video',
+      remoteKeyPackage: payload.keyPackage ?? null,
     }),
   activate: () => set({ phase: 'active', error: null }),
   setStreams: ({ localStream, remoteStream }) => set({ localStream, remoteStream }),

@@ -34,17 +34,22 @@ export async function sendCallPush(fcmToken, callData) {
   }
   
   try {
+    const data: any = {
+      type: 'callIncoming',
+      callId: callData.callId,
+      channelId: String(callData.channelId),
+      mode: callData.mode,
+      peerId: String(callData.peer.id),
+      peerName: callData.peer.username,
+      peerAvatar: callData.peer.avatarUrl || '',
+    }
+    if (callData.keyPackage) {
+      data.keyPackage = callData.keyPackage
+    }
+    
     await messaging.send({
       token: fcmToken,
-      data: {
-        type: 'callIncoming',
-        callId: callData.callId,
-        channelId: String(callData.channelId),
-        mode: callData.mode,
-        peerId: String(callData.peer.id),
-        peerName: callData.peer.username,
-        peerAvatar: callData.peer.avatarUrl || '',
-      },
+      data,
       android: {
         priority: 'high',
         notification: {

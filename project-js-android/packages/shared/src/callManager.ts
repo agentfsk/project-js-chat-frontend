@@ -8,6 +8,7 @@ import type {
   CallSignalData,
   CallSignalPayload,
   UserProfile,
+  CallKeyPackage,
 } from './types'
 import { useCallStore } from './store/calls'
 import { CallEngine } from './webrtc.rn'
@@ -18,15 +19,26 @@ import {
   emitCallReject,
   emitCallSignal,
 } from './socket'
+import {
+  initializeIdentityKeys,
+  rotatePreKeys,
+  getKeyPackage,
+  createE2EEContext,
+  type E2EEContext,
+} from './e2ee'
+import { createWebStores } from './crypto/keyStorage'
 
 const RING_TIMEOUT_MS = 30_000
 const ENDED_DISMISS_MS = 4_000
 
 let engine: CallEngine | null = null
+let e2eeContext: E2EEContext | null = null
 let pendingOfferSdp: string | null = null
 let pendingSignals: CallSignalData[] = []
 let ringTimeout: ReturnType<typeof setTimeout> | null = null
 let clearTimeoutHandle: ReturnType<typeof setTimeout> | null = null
+
+const stores = createWebStores()
 
 function cancelRingTimeout(): void {
   if (ringTimeout !== null) {
@@ -56,6 +68,7 @@ function teardownEngine(): void {
     engine.teardown()
     engine = null
   }
+  e2eeContext = null
   pendingOfferSdp = null
   pendingSignals = []
 }
@@ -70,6 +83,7 @@ function createEngine(polite: boolean): CallEngine {
   teardownEngine()
   engine = new CallEngine({
     polite,
+    encryptionContext: e2eeContext ?? undefined,
     onSignal: (data) => {
       const state = useCallStore.getState()
       if (state.callId) void emitCallSignal(state.callId, data).catch(() => {})
@@ -119,8 +133,23 @@ export async function startCall(params: {
   if (state.phase !== 'idle' && state.phase !== 'ended') return
   cancelClearTimeout()
 
+  await initializeIdentityKeys(
+    stores.identity.getIdentityKeyPair,
+    stores.identity.saveIdentityKeyPair,
+    stores.preKey.getSignedPreKey,
+    stores.preKey.saveSignedPreKey,
+    stores.preKey.getAllPreKeys,
+    stores.preKey.savePreKeys
+  )
+
+  const localKeyPackage = getKeyPackage()
+  if (!localKeyPackage) {
+    endCall('E2EE keys not available')
+    return
+  }
+
   const callId = crypto.randomUUID()
-  state.beginOutgoing({ callId, channelId: params.channelId, mode: params.mode, peer: params.peer })
+  state.beginOutgoing({ callId, channelId: params.channelId, mode: params.mode, peer: params.peer, localKeyPackage })
 
   const localEngine = createEngine(false)
   try {
@@ -140,7 +169,7 @@ export async function startCall(params: {
   }
 
   try {
-    const result = await emitCallOffer({ callId, channelId: params.channelId, mode: params.mode, sdp: offer })
+    const result = await emitCallOffer({ callId, channelId: params.channelId, mode: params.mode, sdp: offer, keyPackage: localKeyPackage })
     if (result.outcome === 'offline') {
       endCall('Пользователь не в сети')
       return
@@ -166,6 +195,32 @@ export async function accept(): Promise<void> {
   const offerSdp = pendingOfferSdp
   if (!callId || !offerSdp) return
 
+  await initializeIdentityKeys(
+    stores.identity.getIdentityKeyPair,
+    stores.identity.saveIdentityKeyPair,
+    stores.preKey.getSignedPreKey,
+    stores.preKey.saveSignedPreKey,
+    stores.preKey.getAllPreKeys,
+    stores.preKey.savePreKeys
+  )
+
+  const localKeyPackage = getKeyPackage()
+  if (!localKeyPackage) {
+    endCall('E2EE keys not available')
+    return
+  }
+
+  const remoteKeyPackage = (state as any).remoteKeyPackage as CallKeyPackage | undefined
+  if (remoteKeyPackage) {
+    const identityKeyPair = await stores.identity.getIdentityKeyPair()
+    const signedPreKeyPair = await stores.preKey.getSignedPreKey()
+    const allPreKeys = await stores.preKey.getAllPreKeys()
+    const preKeyPair = allPreKeys[0]
+    if (identityKeyPair && signedPreKeyPair) {
+      e2eeContext = createE2EEContext(callId, false, localKeyPackage, remoteKeyPackage, identityKeyPair, signedPreKeyPair, preKeyPair)
+    }
+  }
+
   const localEngine = createEngine(true)
   try {
     await localEngine.startLocalMedia(mode)
@@ -189,7 +244,7 @@ export async function accept(): Promise<void> {
   }
   state.activate()
   pendingOfferSdp = null
-  void emitCallAnswer(callId, answer).catch((err: unknown) => {
+  void emitCallAnswer(callId, answer, localKeyPackage).catch((err: unknown) => {
     endCall(err instanceof Error ? err.message : 'Не удалось ответить на звонок')
   })
 }
@@ -271,17 +326,18 @@ export async function stopShare(): Promise<void> {
   state.setScreen(false)
 }
 
-export function onCallIncoming(payload: CallIncomingPayload): void {
+export function onCallIncoming(payload: CallIncomingPayload & { keyPackage?: CallKeyPackage }): void {
   const state = useCallStore.getState()
   if (state.phase === 'calling' || state.phase === 'ringing' || state.phase === 'active') return
   cancelClearTimeout()
   pendingOfferSdp = payload.sdp
   pendingSignals = []
+  ;(state as any).remoteKeyPackage = payload.keyPackage
   state.beginIncoming(payload)
   startRingTimeout(payload.callId)
 }
 
-export function onCallAnswered(payload: CallAnsweredPayload): void {
+export async function onCallAnswered(payload: CallAnsweredPayload & { keyPackage?: CallKeyPackage }): Promise<void> {
   const state = useCallStore.getState()
   if (state.phase !== 'calling' || state.callId !== payload.callId) return
   cancelRingTimeout()
@@ -289,6 +345,20 @@ export function onCallAnswered(payload: CallAnsweredPayload): void {
   engine
     .handleSignal({ type: 'answer', sdp: payload.sdp })
     .catch(() => endCall('Не удалось установить соединение'))
+  
+  if (payload.keyPackage && e2eeContext) {
+    const localKeyPackage = (state as any).localKeyPackage as CallKeyPackage | undefined
+    if (localKeyPackage) {
+      const identityKeyPair = await stores.identity.getIdentityKeyPair()
+      const signedPreKeyPair = await stores.preKey.getSignedPreKey()
+      const allPreKeys = await stores.preKey.getAllPreKeys()
+      const preKeyPair = allPreKeys[0]
+      if (identityKeyPair && signedPreKeyPair) {
+        e2eeContext = createE2EEContext(payload.callId, true, localKeyPackage, payload.keyPackage, identityKeyPair, signedPreKeyPair, preKeyPair)
+      }
+    }
+  }
+  
   state.activate()
 }
 

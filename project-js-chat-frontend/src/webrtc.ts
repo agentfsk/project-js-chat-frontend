@@ -1,4 +1,4 @@
-import type { CallMode, CallSignalData } from './types'
+import type { CallMode, CallSignalData, E2EEContext } from './types'
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 
@@ -8,6 +8,7 @@ export type EngineOptions = {
   onFailure: (message: string) => void
   onRemoteVideo?: (active: boolean) => void
   polite?: boolean
+  encryptionContext?: E2EEContext
 }
 
 export class CallEngine {
@@ -31,6 +32,7 @@ export class CallEngine {
   private onFailure: (message: string) => void
   private onRemoteVideo?: (active: boolean) => void
   private lastRemoteVideo = false
+  private encryptionContext?: E2EEContext
 
   constructor(options: EngineOptions) {
     this.polite = options.polite ?? false
@@ -38,6 +40,7 @@ export class CallEngine {
     this.onRemoteStream = options.onRemoteStream
     this.onFailure = options.onFailure
     this.onRemoteVideo = options.onRemoteVideo
+    this.encryptionContext = options.encryptionContext
     this.localStream = new MediaStream()
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
 
@@ -189,6 +192,20 @@ export class CallEngine {
 
   getLocalStream(): MediaStream {
     return this.localStream
+  }
+
+  getSafetyNumber(): bigint | null {
+    return this.encryptionContext?.safetyNumber ?? null
+  }
+
+  encryptFrame(frame: Uint8Array): Uint8Array {
+    if (!this.encryptionContext) return frame
+    return this.encryptionContext.encryptor.encrypt(frame)
+  }
+
+  decryptFrame(frame: Uint8Array): Uint8Array {
+    if (!this.encryptionContext) return frame
+    return this.encryptionContext.decryptor.decrypt(frame)
   }
 
   requestNegotiation(): void {

@@ -1637,6 +1637,111 @@ textarea {
   }
 }
 
+/* Safety Number Modal */
+.safety-number-modal {
+  max-width: 360px;
+}
+
+.safety-number-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.safety-number-modal .modal-title {
+  color: var(--text-h);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.safety-number-modal .modal-close {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.safety-number-modal .modal-peer {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.safety-number-modal .modal-peer-label {
+  color: var(--text);
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.safety-number-modal .modal-peer-name {
+  color: var(--text-h);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.safety-number-modal .modal-qr {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.safety-number-modal .modal-qr svg {
+  width: 200px;
+  height: 200px;
+}
+
+.safety-number-modal .modal-number-container {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.safety-number-modal .modal-number-label {
+  color: var(--text);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.safety-number-modal .modal-number-value {
+  color: var(--accent);
+  font-size: 24px;
+  font-family: monospace;
+  letter-spacing: 2px;
+  margin: 0;
+}
+
+.safety-number-modal .modal-instructions {
+  color: var(--text);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.safety-number-modal .modal-verify-button {
+  width: 100%;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.safety-number-modal .modal-verify-button:hover {
+  filter: brightness(1.1);
+}
+
 /* Standard phones */
 
 @media (max-width: 480px) {

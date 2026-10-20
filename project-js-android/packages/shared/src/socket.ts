@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 export type { Socket } from 'socket.io-client'
 import type { StorageAdapter } from './storage'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage } from './types'
 import type { ChatState } from './store/chat'
 import type { UnreadState } from './store/unread'
 import type { UsersState } from './store/users'
@@ -274,12 +274,13 @@ export function emitCallOffer(payload: {
   channelId: number
   mode: CallMode
   sdp: string
+  keyPackage?: CallKeyPackage
 }): Promise<{ outcome: 'ringing' | 'offline' | 'busy' }> {
   return emitWithAck<{ outcome: 'ringing' | 'offline' | 'busy' }>('callOffer', payload)
 }
 
-export function emitCallAnswer(callId: string, sdp: string): Promise<void> {
-  return emitWithAck<void>('callAnswer', { callId, sdp })
+export function emitCallAnswer(callId: string, sdp: string, keyPackage?: CallKeyPackage): Promise<void> {
+  return emitWithAck<void>('callAnswer', { callId, sdp, keyPackage })
 }
 
 export function emitCallSignal(callId: string, data: CallSignalData): Promise<void> {
