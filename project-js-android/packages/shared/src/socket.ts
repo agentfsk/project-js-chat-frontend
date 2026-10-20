@@ -1,11 +1,12 @@
 import { io, type Socket } from 'socket.io-client'
 export type { Socket } from 'socket.io-client'
 import type { StorageAdapter } from './storage'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, CallEndedPayload, CallActivePayload } from './types'
 import type { ChatState } from './store/chat'
 import type { UnreadState } from './store/unread'
 import type { UsersState } from './store/users'
 import type { ToastState } from './store/toasts'
+import { onCallEnded, onCallActive, onSocketClosed } from './callManager'
 
 // Polyfills for React Native
 declare var global: any
@@ -141,8 +142,14 @@ export async function connectSocket(): Promise<Socket | null> {
   socket.on('userUpdated', (profile) => {
     storeRefs?.users.applyUserUpdate(profile)
   })
+  socket.on('callEnded', (payload: CallEndedPayload) => {
+    onCallEnded(payload)
+  })
+  socket.on('callActive', (payload: CallActivePayload) => {
+    onCallActive(payload)
+  })
   socket.on('disconnect', () => {
-    // Handled by callManager
+    onSocketClosed()
   })
   socket.on('connect_error', (err) => {
     if (err.message === 'unauthorized') {

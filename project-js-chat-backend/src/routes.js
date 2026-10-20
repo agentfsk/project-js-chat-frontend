@@ -705,12 +705,13 @@ export default (app, defaultState = {}) => {
         return;
       }
       const caller = state.users.find((user) => user.id === socket.userId);
+      const calleeSocketId = calleeRoom ? Array.from(calleeRoom)[0] : null;
       state.calls.push({
         callId,
         callerId: socket.userId,
         calleeId,
         callerSocketId: socket.id,
-        calleeSocketId: null,
+        calleeSocketId,
         channelId: channel.id,
         mode: mode === 'video' ? 'video' : 'audio',
         phase: 'ringing',

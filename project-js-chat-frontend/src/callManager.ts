@@ -463,9 +463,7 @@ export function onCallEnded(payload: CallEndedPayload): void {
 export function onCallActive(payload: CallActivePayload): void {
   const state = useCallStore.getState()
   if (state.callId !== payload.callId || state.phase !== 'ringing') return
-  teardownEngine()
-  state.end()
-  scheduleClear()
+  state.activate()
 }
 
 export function onSocketClosed(): void {
