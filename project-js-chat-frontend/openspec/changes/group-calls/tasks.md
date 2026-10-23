@@ -65,22 +65,22 @@
 - [ ] 4.7 Update `src/screens/CallActiveScreen.tsx` reuse for group calls: adapt for multiple participants, add participant list modal (verify: screen works for group calls)
 - [ ] 4.8 Create `GroupCallParticipantListModal.tsx`: list all participants with mute/cam status, owner actions (mute/kick) (verify: modal opens, actions work)
 - [ ] 4.8 Add group call invite handling: parse FCM push `type: 'groupCallInvite'`, navigate to GroupCallScreen with join flow (verify: tap push opens join screen)
-- [ ] 4.9 Update `GroupInfoModal.tsx`: add "Start voice chat" / "Start video chat" buttons for owner/admin (verify: buttons visible for owner/admin, hidden for members)
+- [x] 4.9 Update `GroupInfoModal.tsx`: add "Start voice chat" / "Start video chat" buttons for owner/admin (verify: buttons visible for owner/admin, hidden for members)
 - [ ] 4.10 Add screen share support: `expo-media-library` + `getDisplayMedia` via mediasoup-client (verify: screen share starts, others see shared screen)
 
 ## 5. Web Frontend (project-js-chat-frontend)
 
-- [ ] 5.1 Add `mediasoup-client` dependency (verify: `pnpm install` succeeds)
+- [x] 5.1 Add `mediasoup-client` dependency (verify: `pnpm install` succeeds)
 - [ ] 5.1 Create `src/groupCall/` module: `GroupCallEngine.ts`, `GroupCallScreen.tsx`, `groupCallStore.ts`, `mls.ts`
 - [x] 5.2 Implement `GroupCallEngine.ts`: mediasoup-client Device, transports, produce/consume, event handlers (verify: web joins group call, media flows)
-- [ ] 5.2 Implement `GroupCallScreen.tsx`: grid view (CSS Grid), speaker view, participant tiles with `<RTCView>` equivalent (video element), mute/cam/screen controls (verify: screen works, grid/speaker toggle)
-- [ ] 5.3 Implement participant tile: `<video>` element with `srcObject`, mute/cam indicators, name, speaking indicator via audio level (verify: tiles show video, indicators update)
-- [ ] 5.3 Implement screen sharing: `getDisplayMedia()`, produce screen track, replace video track (verify: screen share works, others see shared screen)
+- [x] 5.2 Implement `GroupCallScreen.tsx`: grid view (CSS Grid), speaker view, participant tiles with `<RTCView>` equivalent (video element), mute/cam/screen controls (verify: screen works, grid/speaker toggle)
+- [x] 5.3 Implement participant tile: `<video>` element with `srcObject`, mute/cam indicators, name, speaking indicator via audio level (verify: tiles show video, indicators update)
+- [x] 5.3 Implement screen sharing: `getDisplayMedia()`, produce screen track, replace video track (verify: screen share works, others see shared screen)
 - [ ] 5.4 MLS integration for web: dynamic import `@openmls/rust` (WASM), process Welcome/Commit, derive SFrame keys (verify: E2EE works in browser)
 - [ ] 5.4 Update `src/socket.ts`: add group call signaling events for web
-- [ ] 5.5 Update `src/pages/ChatPage.tsx` or group channel: add "Start voice chat" / "Start video chat" for owner/admin (verify: buttons visible for owner/admin)
-- [ ] 5.5 Add "Join voice/video chat" banner when group call active (verify: banner appears, join navigates to GroupCallScreen)
-- [ ] 5.6 Create `GroupCallScreen.tsx` route in `App.tsx` (verify: navigation works)
+- [x] 5.5 Update `src/pages/ChatPage.tsx` or group channel: add "Start voice chat" / "Start video chat" for owner/admin (verify: buttons visible for owner/admin)
+- [x] 5.5 Add "Join voice/video chat" banner when group call active (verify: banner appears, join navigates to GroupCallScreen)
+- [x] 5.6 Create `GroupCallScreen.tsx` route in `App.tsx` (verify: navigation works)
 - [ ] 5.6 Implement participant list sidebar/modal: list participants, mute/cam status, owner actions (verify: sidebar opens, actions work)
 - [x] 5.7 **Fix `handleJoinGroupCall` in `ChatPage.tsx` to include `appData` in `GroupCallEngineConfig`** (verify: config passes type check, appData included)
 

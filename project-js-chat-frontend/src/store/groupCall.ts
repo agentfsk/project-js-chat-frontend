@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GroupCallState, GroupCallParticipant, GroupCallPhase, GroupCallMode } from '../groupCall/types'
+import type { GroupCallState, GroupCallParticipant, GroupCallPhase } from '../groupCall/types'
 
 interface GroupCallStore {
   state: GroupCallState | null
@@ -9,21 +9,6 @@ interface GroupCallStore {
   addParticipant: (participant: GroupCallParticipant) => void
   removeParticipant: (userId: string) => void
   updateParticipant: (userId: string, updates: Partial<GroupCallParticipant>) => void
-}
-
-const initialState: GroupCallState = {
-  callId: '',
-  channelId: 0,
-  mode: 'audio',
-  phase: 'idle',
-  creatorId: '',
-  participants: new Map(),
-  localParticipant: null,
-  createdAt: new Date(),
-  startedAt: null,
-  endedAt: null,
-  sframeKeys: new Map(),
-  localKeyId: 0,
 }
 
 export const useGroupCallStore = create<GroupCallStore>((set, get) => ({

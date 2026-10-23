@@ -9,7 +9,6 @@ import {
   emitPinMessage,
   emitReadChannel,
   emitToggleReaction,
-  emitGroupCallCreate,
 } from '../socket'
 import { useChatStore, selectActiveChannelMessages, selectPinnedMessage } from '../store/chat'
 import { useUnreadStore } from '../store/unread'
@@ -35,7 +34,7 @@ import { isDirectChannel, isGroupChannel } from '../utils/channelKind'
 import type { CallMode, Message } from '../types'
 import { GroupCallScreen } from '../groupCall'
 import { GroupCallBanner } from '../components/GroupCallBanner'
-import { createGroupCallEngine, createGroupCallEngineConfig, type GroupCallEngineConfig } from '../groupCall'
+import { createGroupCallEngine, createGroupCallEngineConfig } from '../groupCall'
 
 const MOBILE_QUERY = '(max-width: 700px)'
 
@@ -155,7 +154,7 @@ function ChatPage() {
 const handleJoinGroupCall = async () => {
     if (!activeChannel || !me || !groupCallState) return
     try {
-      const config = {
+      const config = createGroupCallEngineConfig({
         callId: groupCallState.callId,
         channelId: groupCallState.channelId,
         mode: groupCallState.mode,
@@ -165,22 +164,10 @@ const handleJoinGroupCall = async () => {
         isCreator: groupCallState.creatorId === String(me.id),
         rtpCapabilities: null,
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-        appData: { userId: String(me.id), isScreenShare: false, source: 'group-call', keyId: 0 },
-        events: {},
-      } as GroupCallEngineConfig
-      const engine = createGroupCallEngine(config)
-      await engine.join({
-        callId: groupCallState.callId,
-        channelId: groupCallState.channelId,
-        mode: groupCallState.mode,
-        userId: String(me.id),
-        displayName: me.username,
-        avatarUrl: me.avatarUrl,
-        isCreator: groupCallState.creatorId === String(me.id),
-        rtpCapabilities: null,
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-        events: {},
+        userIdString: String(me.id),
       })
+      const engine = createGroupCallEngine(config)
+      await engine.join(config)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Не удалось присоединиться к звонку')
     }

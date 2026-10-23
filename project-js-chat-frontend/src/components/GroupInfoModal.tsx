@@ -12,11 +12,13 @@ import {
 } from '../socket'
 import { isGroupOwner, canActOnGroupMember } from '../utils/permissions'
 import type { UserProfile } from '../types'
+import type { GroupCallMode } from '../groupCall/types'
 import CreateGroupModal from './CreateGroupModal'
 import InviteMembersModal from './InviteMembersModal'
 import ConfirmDialog from './ConfirmDialog'
 import TypeYesDeleteDialog from './TypeYesDeleteDialog'
 import GroupMemberMenu from './GroupMemberMenu'
+import { useAuthStore } from '../store/auth'
 
 const LONG_PRESS_MS = 500
 const LONG_PRESS_MOVE_TOLERANCE = 10
@@ -29,14 +31,36 @@ type GroupInfoModalProps = {
 function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
   const channel = useChatStore((state) => state.channels.find((c) => c.id === channelId) ?? null)
   const me = useUsersStore((state) => state.me)
+  const token = useAuthStore((state) => state.token)
   const setError = useChatStore((state) => state.setError)
   const [menu, setMenu] = useState<{ member: UserProfile; x: number; y: number } | null>(null)
   const [inviting, setInviting] = useState(false)
   const [editing, setEditing] = useState(false)
   const [kickTarget, setKickTarget] = useState<UserProfile | null>(null)
   const [deleteStage, setDeleteStage] = useState<'none' | 'confirm' | 'typed'>('none')
+  const [creatingCall, setCreatingCall] = useState<GroupCallMode | null>(null)
   const longPressTimer = useRef<number | null>(null)
   const longPressStart = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+
+  const startGroupCall = async (mode: GroupCallMode) => {
+    if (!channel || !me || !token) return
+    setCreatingCall(mode)
+    try {
+      const res = await fetch('/api/v1/group-calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ channelId: channel.id, mode }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message ?? 'Failed to create group call')
+      // Navigate to group call screen
+      window.location.href = `/group-call/${data.callId}`
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось создать групповой звонок')
+    } finally {
+      setCreatingCall(null)
+    }
+  }
 
   useEffect(
     () => () => {
@@ -138,6 +162,22 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
           </button>
           <button type="button" onClick={() => setEditing(true)}>
             Изменить группу
+          </button>
+          <button
+            type="button"
+            className="group-call-btn"
+            onClick={() => startGroupCall('audio')}
+            disabled={creatingCall !== null}
+          >
+            {creatingCall === 'audio' ? 'Создание...' : 'Голосовой чат'}
+          </button>
+          <button
+            type="button"
+            className="group-call-btn"
+            onClick={() => startGroupCall('video')}
+            disabled={creatingCall !== null}
+          >
+            {creatingCall === 'video' ? 'Создание...' : 'Видеочат'}
           </button>
           <button type="button" className="danger-btn" onClick={() => setDeleteStage('confirm')}>
             Удалить группу

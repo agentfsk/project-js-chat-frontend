@@ -1,30 +1,36 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useGroupCallStore } from '../store/groupCall'
 import { ParticipantTile } from './ParticipantTile'
 import { GroupCallParticipantsSidebar } from './GroupCallParticipantsSidebar'
+import { createGroupCallEngine, createGroupCallEngineConfig, type GroupCallEngine } from './GroupCallEngine'
 import type { GroupCallParticipant } from './types'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useAuthStore } from '../store/auth'
+import { useUsersStore } from '../store/users'
+import { emitGroupCallJoin } from '../socket'
 
 export const GroupCallScreen: React.FC = () => {
   const navigate = useNavigate()
-  // const params = useParams<{ callId: string }>()
-  // const callId = params.callId! // TODO: use for engine initialization
+  const params = useParams<{ callId: string }>()
+  const callId = params.callId!
+  const token = useAuthStore((state) => state.token)
+  const me = useUsersStore((state) => state.me)
 
   const {
     state,
     reset,
+    initialize,
   } = useGroupCallStore()
 
+  const engineRef = useRef<GroupCallEngine | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'speaker'>('grid')
   const [showParticipants, setShowParticipants] = useState(false)
   const [speakerId, setSpeakerId] = useState<string | null>(null)
-  const [speakerScale, setSpeakerScale] = useState(1)
-  // const [localStream, setLocalStream] = useState<MediaStream | null>(null)
-  // const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map())
+  const [error, setError] = useState<string | null>(null)
 
-  // const channelId = state?.channelId || 0
-  // const mode = state?.mode || 'audio'
-  const localUserId = state?.creatorId || ''
+  const localUserId = me ? String(me.id) : ''
   const isCreator = state?.creatorId === localUserId
 
   const participants = useMemo(() => state ? Array.from(state.participants.values()) : [], [state])
@@ -38,31 +44,153 @@ export const GroupCallScreen: React.FC = () => {
     }
   }, [activeSpeaker, viewMode])
 
-  const handlePinch = useCallback((e: React.TouchEvent) => {
-    if (viewMode === 'speaker' && e.touches.length === 2) {
-      // Pinch to zoom would need more sophisticated handling
+  const joinCall = useCallback(async () => {
+    if (!callId || !state || !token || !me) return
+    
+    setError(null)
+    try {
+      const config = createGroupCallEngineConfig({
+        callId: state.callId,
+        channelId: state.channelId,
+        mode: state.mode,
+        userId: String(me.id),
+        displayName: me.username,
+        avatarUrl: me.avatarUrl,
+        isCreator: state.creatorId === String(me.id),
+        rtpCapabilities: null,
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        userIdString: String(me.id),
+      })
+
+      const engine = createGroupCallEngine(config)
+      engineRef.current = engine
+
+      engine.onStateChange = (newState) => {
+        initialize({
+          callId: newState.callId,
+          channelId: newState.channelId,
+          mode: newState.mode,
+          phase: newState.phase,
+          creatorId: newState.creatorId,
+          participants: Array.from(newState.participants.values()),
+          localParticipant: newState.localParticipant,
+          createdAt: newState.createdAt,
+          startedAt: newState.startedAt,
+          endedAt: newState.endedAt,
+          sframeKeys: newState.sframeKeys,
+          localKeyId: newState.localKeyId,
+        })
+      }
+
+      engine.onLocalMediaStarted = (stream) => {
+        setLocalStream(stream)
+      }
+
+      engine.onLocalMediaStopped = (kind: 'audio' | 'video' | 'screen') => {
+        if (kind === 'video' || kind === 'screen') {
+          setLocalStream(prev => {
+            if (!prev) return null
+            const newStream = new MediaStream()
+            prev.getAudioTracks().forEach(t => newStream.addTrack(t))
+            return newStream
+          })
+        }
+      }
+
+      engine.onRemoteTrackReceived = (userId, track, _kind: 'audio' | 'video' | 'screen') => {
+        setRemoteStreams(prev => {
+          const newMap = new Map(prev)
+          let stream = newMap.get(userId)
+          if (!stream) {
+            stream = new MediaStream()
+            newMap.set(userId, stream)
+          }
+          stream.addTrack(track)
+          return newMap
+        })
+      }
+
+      engine.onRemoteTrackRemoved = (userId, kind) => {
+        setRemoteStreams(prev => {
+          const newMap = new Map(prev)
+          const stream = newMap.get(userId)
+          if (stream) {
+            stream.getTracks().forEach(t => { if (t.kind === kind) stream.removeTrack(t) })
+            if (stream.getTracks().length === 0) {
+              newMap.delete(userId)
+            }
+          }
+          return newMap
+        })
+      }
+
+      engine.onError = (err) => {
+        setError(err.message)
+      }
+
+      engine.onConnectionStateChange = (connState) => {
+        if (connState === 'failed' || connState === 'disconnected') {
+          setError('Connection lost')
+        }
+      }
+
+      await engine.join(config)
+      
+      await emitGroupCallJoin({
+        callId: state.callId,
+        userId: localUserId,
+        rtpCapabilities: engine.getState?.() ?? {},
+      }).catch(console.error)
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join group call')
     }
-  }, [viewMode])
+  }, [callId, state, token, me, isCreator, localUserId, initialize])
+
+  useEffect(() => {
+    if (phase === 'idle' || phase === 'connecting') {
+      joinCall()
+    }
+    return () => {
+      if (engineRef.current) {
+        engineRef.current.leave()
+        engineRef.current = null
+      }
+    }
+  }, [joinCall, phase])
 
   const toggleMic = async () => {
-    // Call engine toggleMic
+    await engineRef.current?.toggleMic()
   }
 
   const toggleCam = async () => {
-    // Call engine toggleCam
+    await engineRef.current?.toggleCam()
   }
 
   const toggleScreenShare = async () => {
-    // Call engine toggleScreenShare
+    await engineRef.current?.toggleScreenShare()
   }
 
   const leaveCall = () => {
+    engineRef.current?.leave()
     reset()
     navigate('/channels/' + state?.channelId)
   }
 
+  const getVideoStream = (userId: string) => {
+    return remoteStreams.get(userId) ?? null
+  }
+
   const renderParticipant = useCallback((participant: GroupCallParticipant) => {
     const isLocal = participant.userId === localUserId
+    let videoStream: MediaStream | null = null
+    
+    if (isLocal) {
+      videoStream = localStream
+    } else {
+      videoStream = getVideoStream(participant.userId)
+    }
+
     return (
       <ParticipantTile
         key={participant.userId}
@@ -71,15 +199,14 @@ export const GroupCallScreen: React.FC = () => {
         layout={viewMode}
         viewMode={viewMode}
         speakerId={speakerId}
-        speakerScale={viewMode === 'speaker' && participant.userId === speakerId ? speakerScale : 1}
+        speakerScale={viewMode === 'speaker' && participant.userId === speakerId ? 1 : 1}
         onClick={() => {
           if (viewMode === 'grid') setSpeakerId(participant.userId)
         }}
+        stream={videoStream}
       />
     )
-  }, [localUserId, viewMode, speakerId])
-
-  // const numColumns = viewMode === 'grid' ? 2 : 1
+  }, [localUserId, viewMode, speakerId, localStream, remoteStreams])
 
   if (phase === 'connecting' || phase === 'idle') {
     return (
@@ -90,8 +217,17 @@ export const GroupCallScreen: React.FC = () => {
     )
   }
 
+  if (error) {
+    return (
+      <div className="group-call-error">
+        <p>{error}</p>
+        <button onClick={leaveCall}>Leave</button>
+      </div>
+    )
+  }
+
   return (
-    <div className="group-call-container" onTouchStart={handlePinch} onTouchMove={handlePinch}>
+    <div className="group-call-container">
       {viewMode === 'grid' ? (
         <div className="group-call-grid" role="list">
           {participants.map(participant => (

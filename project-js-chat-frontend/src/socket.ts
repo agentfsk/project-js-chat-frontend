@@ -6,7 +6,7 @@ import { useUsersStore } from './store/users'
 import { useAuthStore } from './store/auth'
 import { attachmentKind, shouldAnnounce, toastPreview, useToastStore } from './store/toasts'
 import * as callManager from './callManager'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, GroupCallCreatedPayload, GroupCallInvitePayload, GroupCallPeerJoinedPayload, GroupCallPeerLeftPayload, GroupCallSignalPayload, GroupCallMLSMessagePayload, GroupCallNewProducerPayload, GroupCallPeerUpdatePayload, GroupCallPeer } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, GroupCallPeer } from './types'
 
 type AckPayload = { status: string; message?: string; data?: unknown }
 
@@ -99,28 +99,28 @@ export function connectSocket(): Socket | null {
   socket.on('callIncoming', (payload) => {
     callManager.onCallIncoming(payload)
   })
-  socket.on('groupCallCreated', (payload: GroupCallCreatedPayload) => {
+  socket.on('groupCallCreated', () => {
     // Handle group call created
   })
-  socket.on('groupCallInvite', (payload: GroupCallInvitePayload) => {
+  socket.on('groupCallInvite', () => {
     // Handle group call invite
   })
-  socket.on('groupCallPeerJoined', (payload: GroupCallPeerJoinedPayload) => {
+  socket.on('groupCallPeerJoined', () => {
     // Handle peer joined
   })
-  socket.on('groupCallPeerLeft', (payload: GroupCallPeerLeftPayload) => {
+  socket.on('groupCallPeerLeft', () => {
     // Handle peer left
   })
-  socket.on('groupCallSignal', (payload: GroupCallSignalPayload) => {
+  socket.on('groupCallSignal', () => {
     // Handle signaling
   })
-  socket.on('groupCallMLSMessage', (payload: GroupCallMLSMessagePayload) => {
+  socket.on('groupCallMLSMessage', () => {
     // Handle MLS message
   })
-  socket.on('groupCallNewProducer', (payload: GroupCallNewProducerPayload) => {
+  socket.on('groupCallNewProducer', () => {
     // Handle new producer
   })
-  socket.on('groupCallPeerUpdate', (payload: GroupCallPeerUpdatePayload) => {
+  socket.on('groupCallPeerUpdate', () => {
     // Handle peer update
   })
   socket.on('callAnswered', (payload) => {

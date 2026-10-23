@@ -594,6 +594,18 @@ textarea {
   flex-wrap: wrap;
 }
 
+.group-call-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: var(--bg);
+  border: none;
+  font-weight: 600;
+}
+
+.group-call-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .avatar-remove {
   color: var(--danger);
   border-color: var(--danger);

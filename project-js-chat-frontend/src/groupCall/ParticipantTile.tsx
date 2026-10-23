@@ -9,7 +9,7 @@ interface ParticipantTileProps {
   speakerScale?: number
   viewMode: 'grid' | 'speaker'
   speakerId: string | null
-  videoRef?: React.RefObject<HTMLVideoElement>
+  stream?: MediaStream | null
 }
 
 export const ParticipantTile: React.FC<ParticipantTileProps> = ({
@@ -20,9 +20,10 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   speakerScale = 1,
   viewMode,
   speakerId,
-  videoRef,
+  stream,
 }) => {
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const speakingAnimRef = useRef(0)
 
   useEffect(() => {
@@ -34,6 +35,12 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
       speakingAnimRef.current = 0
     }
   }, [participant.isSpeaking, participant.isMuted])
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream
+    }
+  }, [stream])
 
   const hasVideo = participant.isScreenSharing || participant.isCameraOn
 

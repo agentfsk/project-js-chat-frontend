@@ -121,10 +121,10 @@ export class CallEngine {
   }
 
   private clearTransforms(): void {
-    for (const [sender, transform] of this.senderTransforms) {
+    for (const [sender] of this.senderTransforms) {
       sender.transform = null
     }
-    for (const [receiver, transform] of this.receiverTransforms) {
+    for (const [receiver] of this.receiverTransforms) {
       receiver.transform = null
     }
     this.senderTransforms.clear()
