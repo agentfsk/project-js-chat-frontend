@@ -1,4 +1,5 @@
 export * from './types'
+export * from './MeshGroupCallEngine'
 export * from './GroupCallEngine'
 export * from './GroupCallScreen'
 export * from './ParticipantTile'

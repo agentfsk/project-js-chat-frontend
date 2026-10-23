@@ -2,23 +2,13 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useGroupCallStore } from '../store/groupCall'
 import { ParticipantTile } from './ParticipantTile'
 import { GroupCallParticipantsSidebar } from './GroupCallParticipantsSidebar'
-import { createGroupCallEngine, createGroupCallEngineConfig, type GroupCallEngine } from './GroupCallEngine'
+import { createMeshGroupCallEngine, type MeshGroupCallEngine, type MeshSignal } from './MeshGroupCallEngine'
 import type { GroupCallMode, GroupCallParticipant } from './types'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuthStore } from '../store/auth'
 import { useUsersStore } from '../store/users'
-import { emitGroupCallJoin, emitGroupCallKick, emitGroupCallLeave, emitGroupCallPeerUpdate } from '../socket'
-import {
-  connectMediaTransport,
-  consumeMedia,
-  createMediaCall,
-  getMediaSocket,
-  joinMediaCall,
-  leaveMediaCall,
-  produceMedia,
-  sendMediaMLSMessage,
-} from './mediaServer'
-import type { GroupCallKickedPayload } from '../types'
+import { emitGroupCallJoin, emitGroupCallKick, emitGroupCallLeave, emitGroupCallPeerUpdate, emitGroupCallSignal } from '../socket'
+import type { GroupCallKickedPayload, GroupCallSignalPayload } from '../types'
 import { loadGroupCallState, saveGroupCallState } from './persistence'
 import { apiRequest } from '../api/client'
 
@@ -38,7 +28,7 @@ export const GroupCallScreen: React.FC = () => {
 
   const { state, reset, initialize, updateParticipant } = useGroupCallStore()
 
-  const engineRef = useRef<GroupCallEngine | null>(null)
+  const engineRef = useRef<MeshGroupCallEngine | null>(null)
   const localStreamRef = useRef<MediaStream>(new MediaStream())
   const [callInfo, setCallInfo] = useState<CallInfo | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'speaker'>('grid')
@@ -66,10 +56,9 @@ export const GroupCallScreen: React.FC = () => {
   const leaveCall = useCallback((navigateBack = true) => {
     const userId = me ? String(me.id) : ''
     if (callId && userId) {
-      leaveMediaCall({ callId, userId }).catch(() => undefined)
       emitGroupCallLeave({ callId, userId }).catch(() => undefined)
     }
-    engineRef.current?.leave()
+    void engineRef.current?.leave()
     engineRef.current = null
     reset()
     setJoining(false)
@@ -81,6 +70,16 @@ export const GroupCallScreen: React.FC = () => {
   const applyLocalStream = useCallback(() => {
     setLocalStream(new MediaStream(localStreamRef.current.getTracks()))
   }, [])
+
+  const mergeLocalTracks = useCallback((stream: MediaStream) => {
+    stream.getTracks().forEach((track) => {
+      localStreamRef.current.getTracks()
+        .filter((existing) => existing.kind === track.kind)
+        .forEach((existing) => localStreamRef.current.removeTrack(existing))
+      localStreamRef.current.addTrack(track)
+    })
+    applyLocalStream()
+  }, [applyLocalStream])
 
   useEffect(() => {
     if (!callId || !token || !me) return
@@ -105,14 +104,47 @@ export const GroupCallScreen: React.FC = () => {
           savedAt: new Date().toISOString(),
         })
 
+        const joined = await emitGroupCallJoin({ callId, userId: String(me.id) })
+        if (disposed) return
+
+        const knownProfiles = useUsersStore.getState().profiles
+        const localParticipant: GroupCallParticipant = {
+          userId: String(me.id),
+          displayName: me.username,
+          avatarUrl: me.avatarUrl,
+          role: info.creatorId === me.id ? 'creator' : 'participant',
+          isMuted: false,
+          isCameraOn: info.mode === 'video',
+          isScreenSharing: false,
+          isSpeaking: false,
+          audioLevel: 0,
+          joinedAt: new Date(),
+        }
+        const remoteParticipants: GroupCallParticipant[] = (joined.profiles ?? []).map((entry) => {
+          const profile = entry.profile ?? knownProfiles[entry.userId]
+          const updates = entry.updates ?? {}
+          return {
+            userId: String(entry.userId),
+            displayName: profile?.username ?? '',
+            avatarUrl: profile?.avatarUrl ?? null,
+            role: 'participant',
+            isMuted: Boolean(updates.isMuted),
+            isCameraOn: Boolean(updates.isCameraOn),
+            isScreenSharing: Boolean(updates.isScreenSharing),
+            isSpeaking: false,
+            audioLevel: 0,
+            joinedAt: new Date(),
+          }
+        })
+
         initialize({
           callId: info.callId,
           channelId: info.channelId,
           mode: info.mode,
           phase: 'connecting',
           creatorId: String(info.creatorId),
-          participants: [],
-          localParticipant: null,
+          participants: [localParticipant, ...remoteParticipants],
+          localParticipant,
           createdAt: new Date(),
           startedAt: null,
           endedAt: null,
@@ -120,169 +152,55 @@ export const GroupCallScreen: React.FC = () => {
           localKeyId: persisted?.localKeyId ?? 0,
         })
 
-        const mediaCall = await createMediaCall({
-          callId,
-          channelId: info.channelId,
-          mode: info.mode,
-          userId: String(me.id),
-        })
-        if (disposed) return
-
-        const joined = await joinMediaCall({
-          callId,
-          userId: String(me.id),
-          rtpCapabilities: null,
-        })
-        if (disposed) return
-
-        const config = createGroupCallEngineConfig({
-          callId,
-          channelId: info.channelId,
-          mode: info.mode,
-          userId: String(me.id),
-          displayName: me.username,
-          avatarUrl: me.avatarUrl,
-          isCreator: info.creatorId === me.id,
-          rtpCapabilities: joined.routerRtpCapabilities ?? mediaCall.routerRtpCapabilities,
-          iceServers: joined.iceServers ?? mediaCall.iceServers,
-          userIdString: String(me.id),
-          sendTransport: joined.sendTransport,
-          recvTransport: joined.recvTransport,
-          events: {
-            onTransportConnect: async ({ transportId, dtlsParameters }) => {
-              await connectMediaTransport({ callId, transportId, dtlsParameters })
-            },
-            onProduce: async ({ kind, rtpParameters, appData }) => {
-              return produceMedia({
-                callId,
-                userId: String(me.id),
-                kind,
-                rtpParameters,
-                appData,
-              })
-            },
-            onConsume: async ({ producerId, rtpCapabilities }) => {
-              return consumeMedia({
-                callId,
-                userId: String(me.id),
-                producerId,
-                rtpCapabilities,
-              }).then((consumer) => ({
-                consumerId: consumer.consumerId,
-                kind: consumer.kind,
-                rtpParameters: consumer.rtpParameters,
-              })).catch((caught: unknown) => {
-                console.error('consume failed', caught)
-                return null
-              })
-            },
-            onMLSMessage: async ({ message }) => {
-              await sendMediaMLSMessage({ callId, userId: String(me.id), message })
-            },
-          },
-        })
-
-        const engine = createGroupCallEngine(config)
+        const engine = createMeshGroupCallEngine()
         engineRef.current = engine
 
-        engine.onStateChange = (newState) => {
-          const current = useGroupCallStore.getState().state
-          const merged = new Map(current?.participants ?? [])
-          for (const [id, participant] of newState.participants) {
-            const existing = merged.get(id)
-            merged.set(id, existing
-              ? {
-                  ...existing,
-                  isMuted: participant.isMuted,
-                  isCameraOn: participant.isCameraOn,
-                  isScreenSharing: participant.isScreenSharing,
-                  sframeKeyId: participant.sframeKeyId,
-                }
-              : participant)
-          }
-          initialize({
-            callId: newState.callId,
-            channelId: newState.channelId,
-            mode: newState.mode,
-            phase: newState.phase,
-            creatorId: newState.creatorId,
-            participants: Array.from(merged.values()),
-            localParticipant: newState.localParticipant,
-            createdAt: newState.createdAt,
-            startedAt: newState.startedAt,
-            endedAt: newState.endedAt,
-            sframeKeys: newState.sframeKeys,
-            localKeyId: newState.localKeyId,
-          })
-        }
-
-        engine.onLocalMediaStarted = (stream) => {
-          stream.getTracks().forEach((track) => {
-            localStreamRef.current.getTracks()
-              .filter((existing) => existing.kind === track.kind)
-              .forEach((existing) => localStreamRef.current.removeTrack(existing))
-            localStreamRef.current.addTrack(track)
-          })
-          applyLocalStream()
-        }
-
-        engine.onLocalMediaStopped = (kind) => {
-          localStreamRef.current.getTracks()
-            .filter((track) => track.kind === (kind === 'audio' ? 'audio' : 'video'))
-            .forEach((track) => localStreamRef.current.removeTrack(track))
-          applyLocalStream()
-        }
-
-        engine.onRemoteTrackReceived = (userId, track, _kind) => {
-          setRemoteStreams(prev => {
-            const newMap = new Map(prev)
-            let stream = newMap.get(userId)
-            if (!stream) {
-              stream = new MediaStream()
-              newMap.set(userId, stream)
-            }
-            stream.getTracks()
-              .filter((existing) => existing.kind === track.kind)
-              .forEach((existing) => stream!.removeTrack(existing))
-            stream.addTrack(track)
-            return newMap
-          })
-        }
-
-        engine.onRemoteTrackRemoved = (userId, kind) => {
-          setRemoteStreams(prev => {
-            const newMap = new Map(prev)
-            const stream = newMap.get(userId)
-            if (stream) {
-              const trackKind = kind === 'audio' ? 'audio' : 'video'
-              stream.getTracks()
-                .filter((track) => track.kind === trackKind)
-                .forEach((track) => stream.removeTrack(track))
-              if (stream.getTracks().length === 0) {
-                newMap.delete(userId)
-              }
-            }
-            return newMap
-          })
-        }
-
-        engine.onError = (err) => setError(err.message)
-
-        engine.onConnectionStateChange = (connState) => {
-          if (connState === 'failed' || connState === 'disconnected') {
-            setError('Соединение потеряно')
-          }
-        }
-
-        await engine.join(config)
-        if (disposed) return
-        await emitGroupCallJoin({
+        await engine.start({
           callId,
           userId: String(me.id),
-          rtpCapabilities: null,
-        }).catch(() => undefined)
-        await engine.consumeExistingProducers(joined.producers ?? [])
+          mode: info.mode,
+          existingPeerIds: remoteParticipants.map((participant) => participant.userId),
+          sendSignal: (targetUserId, signal) => emitGroupCallSignal({
+            callId,
+            targetUserId,
+            signal,
+          }),
+          onLocalStream: mergeLocalTracks,
+          onLocalTrackStopped: (kind) => {
+            localStreamRef.current.getTracks()
+              .filter((track) => track.kind === kind)
+              .forEach((track) => localStreamRef.current.removeTrack(track))
+            applyLocalStream()
+          },
+          onRemoteTrack: (userId, track) => {
+            setRemoteStreams(prev => {
+              const newMap = new Map(prev)
+              let stream = newMap.get(userId)
+              if (!stream) {
+                stream = new MediaStream()
+                newMap.set(userId, stream)
+              }
+              stream.getTracks()
+                .filter((existing) => existing.kind === track.kind)
+                .forEach((existing) => stream!.removeTrack(existing))
+              stream.addTrack(track)
+              return newMap
+            })
+          },
+          onRemoteTrackRemoved: (userId) => {
+            setRemoteStreams(prev => {
+              const newMap = new Map(prev)
+              newMap.delete(userId)
+              return newMap
+            })
+          },
+          onError: (message) => {
+            console.error('Group call peer error:', message)
+          },
+        })
+        if (disposed) return
 
+        useGroupCallStore.getState().setPhase('joined')
         setJoining(false)
       } catch (err) {
         if (disposed) return
@@ -296,31 +214,24 @@ export const GroupCallScreen: React.FC = () => {
     return () => {
       disposed = true
       const userId = String(me.id)
-      leaveMediaCall({ callId, userId }).catch(() => undefined)
-      engineRef.current?.leave()
+      emitGroupCallLeave({ callId, userId }).catch(() => undefined)
+      void engineRef.current?.leave()
       engineRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callId, token, me?.id])
 
   useEffect(() => {
-    const mediaSocket = getMediaSocket()
+    const onSignal = (event: Event) => {
+      const detail = (event as CustomEvent<GroupCallSignalPayload>).detail
+      if (detail?.callId !== callId) return
+      void engineRef.current?.handleSignal(detail.fromUserId, detail.signal as MeshSignal)
+    }
 
-    const onNewProducer = (payload: {
-      callId: string
-      producerId: string
-      kind: 'audio' | 'video'
-      producerUserId: string | number
-      appData?: Record<string, unknown>
-    }) => {
-      if (payload.callId !== callId) return
-      const source = payload.appData?.source
-      const kind = source === 'screen' ? 'screen' : payload.kind
-      void engineRef.current?.handleNewRemoteProducer(
-        payload.producerId,
-        String(payload.producerUserId),
-        kind,
-      )
+    const onPeerLeft = (event: Event) => {
+      const detail = (event as CustomEvent<{ callId: string; peerId: number }>).detail
+      if (detail?.callId !== callId) return
+      engineRef.current?.removePeer(String(detail.peerId))
     }
 
     const onKicked = (event: Event) => {
@@ -337,12 +248,14 @@ export const GroupCallScreen: React.FC = () => {
       }
     }
 
-    mediaSocket.on('groupCallNewProducer', onNewProducer)
+    window.addEventListener('group-call-signal', onSignal)
+    window.addEventListener('group-call-peer-left', onPeerLeft)
     window.addEventListener('group-call-kicked', onKicked)
     window.addEventListener('group-call-ended', onEnded)
 
     return () => {
-      mediaSocket.off('groupCallNewProducer', onNewProducer)
+      window.removeEventListener('group-call-signal', onSignal)
+      window.removeEventListener('group-call-peer-left', onPeerLeft)
       window.removeEventListener('group-call-kicked', onKicked)
       window.removeEventListener('group-call-ended', onEnded)
     }
@@ -358,22 +271,32 @@ export const GroupCallScreen: React.FC = () => {
     }).catch(() => undefined)
   }, [state, me, localUserId, updateParticipant])
 
-  const toggleMic = async () => {
-    await engineRef.current?.toggleMic()
-    const muted = !(state?.participants.get(localUserId)?.isMuted ?? false)
-    publishUpdate({ isMuted: muted })
+  const toggleMic = () => {
+    const engine = engineRef.current
+    if (!engine) return
+    publishUpdate({ isMuted: engine.toggleMic() })
   }
 
   const toggleCam = async () => {
-    await engineRef.current?.toggleCam()
-    const cameraOn = !(state?.participants.get(localUserId)?.isCameraOn ?? false)
-    publishUpdate({ isCameraOn: cameraOn })
+    const engine = engineRef.current
+    if (!engine) return
+    try {
+      const cameraOn = await engine.toggleCam()
+      publishUpdate({ isCameraOn: cameraOn })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось включить камеру')
+    }
   }
 
   const toggleScreenShare = async () => {
-    const sharing = state?.participants.get(localUserId)?.isScreenSharing ?? false
-    await engineRef.current?.toggleScreenShare()
-    publishUpdate({ isScreenSharing: !sharing })
+    const engine = engineRef.current
+    if (!engine) return
+    try {
+      const sharing = await engine.toggleScreenShare()
+      publishUpdate({ isScreenSharing: sharing })
+    } catch {
+      // The user dismissed the screen picker or sharing failed.
+    }
   }
 
   const muteParticipant = (userId: string) => {
@@ -381,7 +304,7 @@ export const GroupCallScreen: React.FC = () => {
     const participant = state.participants.get(userId)
     if (!participant) return
     if (userId === localUserId) {
-      void toggleMic()
+      toggleMic()
       return
     }
     const isMuted = !participant.isMuted

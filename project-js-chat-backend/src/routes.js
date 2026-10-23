@@ -952,12 +952,21 @@ export default (app, defaultState = {}) => {
 
       const peers = Array.from(groupCall.peers.entries())
         .filter(([peerId]) => peerId !== joinerId)
-        .map(([peerId, peer]) => ({
-          userId: peerId,
-          updates: peer.updates || {},
-        }));
+        .map(([peerId, peer]) => {
+          const peerUser = state.users.find((u) => u.id === peerId);
+          return {
+            userId: peerId,
+            updates: peer.updates || {},
+            profile: peerUser ? publicProfile(peerUser) : null,
+          };
+        });
 
-      acknowledge({ status: 'ok', peers: Array.from(groupCall.peers.keys()), profiles: peers });
+      acknowledge({
+        status: 'ok',
+        peers: Array.from(groupCall.peers.keys()),
+        profiles: peers,
+        data: { peers: Array.from(groupCall.peers.keys()), profiles: peers },
+      });
     });
 
     socket.on('groupCallLeave', async ({
@@ -994,6 +1003,10 @@ export default (app, defaultState = {}) => {
       }
 
       const channel = state.channels.find((c) => c.id === groupCall.channelId);
+      if (!channel) {
+        acknowledge({ status: 'error', message: 'Канал звонка не найден' });
+        return;
+      }
       const selfUpdate = Number(userId) === socket.userId;
       const allowed = selfUpdate || isGroupOwnerOrAdmin(channel, socket.userId);
       if (!allowed) {
@@ -1026,6 +1039,10 @@ export default (app, defaultState = {}) => {
         return;
       }
       const channel = state.channels.find((c) => c.id === groupCall.channelId);
+      if (!channel) {
+        acknowledge({ status: 'error', message: 'Канал звонка не найден' });
+        return;
+      }
       if (!isGroupOwnerOrAdmin(channel, socket.userId)) {
         acknowledge({ status: 'error', message: 'Только владелец или админ может исключать из звонка' });
         return;

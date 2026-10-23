@@ -1,7 +1,10 @@
 # Mediasoup Group Call Media Server
 
-SFU (Selective Forwarding Unit) for encrypted group voice/video calls. Built on
+SFU (Selective Forwarding Unit) for group voice/video calls. Built on
 [mediasoup](https://mediasoup.org/) v3 and Socket.IO.
+
+> The web client currently uses a peer-to-peer WebRTC mesh for group calls and
+> does not require this server. Keep it for larger calls or future SFU mode.
 
 ## Architecture
 

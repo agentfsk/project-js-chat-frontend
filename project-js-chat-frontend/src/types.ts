@@ -196,6 +196,15 @@ export type GroupCallSignalPayload = {
   signal: any
 }
 
+export type GroupCallJoinResult = {
+  peers: number[]
+  profiles: Array<{
+    userId: number
+    updates?: Partial<GroupCallPeer>
+    profile?: UserProfile | null
+  }>
+}
+
 export type GroupCallMLSMessagePayload = {
   callId: string
   fromUserId: string | number

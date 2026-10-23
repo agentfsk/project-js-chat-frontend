@@ -7,7 +7,7 @@ import { useAuthStore } from './store/auth'
 import { attachmentKind, shouldAnnounce, toastPreview, useToastStore } from './store/toasts'
 import * as callManager from './callManager'
 import { useGroupCallStore } from './store/groupCall'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, GroupCallPeer, GroupCallPeerUpdatePayload, GroupCallPeerJoinedPayload, GroupCallPeerLeftPayload, GroupCallInvitePayload, GroupCallCreatedPayload, GroupCallEndedPayload, GroupCallKickedPayload } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, GroupCallPeer, GroupCallPeerUpdatePayload, GroupCallPeerJoinedPayload, GroupCallPeerLeftPayload, GroupCallInvitePayload, GroupCallCreatedPayload, GroupCallEndedPayload, GroupCallKickedPayload, GroupCallJoinResult, GroupCallSignalPayload } from './types'
 
 type AckPayload = { status: string; message?: string; data?: unknown }
 
@@ -154,6 +154,10 @@ export function connectSocket(): Socket | null {
   })
   socket.on('groupCallPeerLeft', (payload: GroupCallPeerLeftPayload) => {
     useGroupCallStore.getState().removeParticipant(String(payload.peerId))
+    window.dispatchEvent(new CustomEvent('group-call-peer-left', { detail: payload }))
+  })
+  socket.on('groupCallSignal', (payload: GroupCallSignalPayload) => {
+    window.dispatchEvent(new CustomEvent('group-call-signal', { detail: payload }))
   })
   socket.on('groupCallPeerUpdate', (payload: GroupCallPeerUpdatePayload) => {
     const updates = payload.updates ?? {}
@@ -361,9 +365,9 @@ export function emitGroupCallCreate(payload: {
 export function emitGroupCallJoin(payload: {
   callId: string
   userId: string
-  rtpCapabilities: any
-}): Promise<void> {
-  return emitWithAck<void>('groupCallJoin', payload)
+  rtpCapabilities?: any
+}): Promise<GroupCallJoinResult> {
+  return emitWithAck<GroupCallJoinResult>('groupCallJoin', payload)
 }
 
 export function emitGroupCallLeave(payload: {

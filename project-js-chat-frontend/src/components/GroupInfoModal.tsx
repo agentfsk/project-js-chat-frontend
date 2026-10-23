@@ -14,7 +14,6 @@ import {
 import { isGroupOwner, canActOnGroupMember, canModerateGroup } from '../utils/permissions'
 import type { UserProfile } from '../types'
 import type { GroupCallMode } from '../groupCall/types'
-import { createMediaCall } from '../groupCall/mediaServer'
 import CreateGroupModal from './CreateGroupModal'
 import InviteMembersModal from './InviteMembersModal'
 import ConfirmDialog from './ConfirmDialog'
@@ -49,12 +48,6 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
     setCreatingCall(mode)
     try {
       const callId = `call-${channel.id}-${Date.now()}`
-      await createMediaCall({
-        callId,
-        channelId: channel.id,
-        mode,
-        userId: String(me.id),
-      })
       const data = await apiRequest<{ callId: string }>('/api/v1/group-calls', {
         method: 'POST',
         body: JSON.stringify({ channelId: channel.id, mode, callId }),
