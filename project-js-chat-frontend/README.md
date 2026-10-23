@@ -61,6 +61,25 @@ Environment variables:
 | `VITE_BACKEND_URL` | same origin | Chat backend URL |
 | `VITE_MEDIA_SERVER_URL` | `http://localhost:3001` | Media server URL |
 
+### Deployment (Vercel + Render)
+
+Vite inlines environment variables at build time, so set both variables in the
+Vercel project settings **before** building and trigger a new deployment after
+changing them. Copy `.env.example` for a local setup.
+
+1. The chat backend runs on Render (or any Node host with WebSocket support).
+   Set `VITE_BACKEND_URL` to its public URL, e.g. `https://api.example.com`.
+2. The media server cannot run on Render web services: mediasoup needs public
+   UDP ports `40000-40100` for RTP. Deploy it to a VPS (see
+   `project-js-media-server/README.md`) and expose it over TLS.
+3. Set `VITE_MEDIA_SERVER_URL` to the media server URL, e.g.
+   `https://media.example.com`. HTTPS is required when the web app is served
+   over HTTPS, otherwise the browser blocks the insecure WebSocket connection.
+4. Redeploy the frontend after changing either variable.
+
+Verify in the browser console: no `[config] VITE_MEDIA_SERVER_URL is not set`
+message, and the media server handshake succeeds when starting a call.
+
 ### MLS key management
 
 MLS group state is managed by `ping-openmls-sdk`. Identity keys and group state

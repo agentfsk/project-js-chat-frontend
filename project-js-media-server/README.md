@@ -59,6 +59,11 @@ without extra port mappings.
 
 ## Deployment (Oracle Cloud Free Tier)
 
+> Render web services and Vercel cannot host this server: mediasoup requires
+> public UDP ports (`40000-40100`) for RTP, while those platforms only expose
+> HTTP(S) ports. Run the media server on a VPS and point the Vercel frontend at
+> it through `VITE_MEDIA_SERVER_URL` (set before the Vercel build, then redeploy).
+
 1. Create an ARM VM and open ingress rules for TCP `3001` and UDP/TCP
    `40000-40100` in the VCN security list and in the instance firewall
    (`ufw allow 3001`, `ufw allow 40000:40100/udp`, `ufw allow 40000:40100/tcp`).
