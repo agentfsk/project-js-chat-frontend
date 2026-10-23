@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  mediasoup:
+    build: .
+    container_name: mediasoup-server
+    network_mode: host
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - MEDIASOUP_LISTEN_IP=0.0.0.0
+      - MEDIASOUP_ANNOUNCED_IP=${MEDIASOUP_ANNOUNCED_IP}
+      - LOG_LEVEL=info
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+networks:
+  default:
+    driver: bridge

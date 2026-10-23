@@ -27,6 +27,7 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_MICROPHONE",
         "FOREGROUND_SERVICE_CAMERA",
+        "FOREGROUND_SERVICE_MEDIA_PROJECTION",
         "POST_NOTIFICATIONS",
         "INTERNET",
         "ACCESS_NETWORK_STATE",
@@ -39,6 +40,8 @@
       "expo-audio",
       "expo-image-picker",
       "expo-document-picker",
+      "expo-media-library",
+      "expo-dev-client",
       [
         "expo-build-properties",
         { "android": { "compileSdkVersion": 34, "targetSdkVersion": 34, "minSdkVersion": 24 } }

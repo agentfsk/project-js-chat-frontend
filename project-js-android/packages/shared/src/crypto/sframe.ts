@@ -98,7 +98,7 @@ export class SFrameDecryptor {
   private baseKey: Uint8Array
   private keyId: number
   private counter: number
-  private replayWindow: Set<number>
+  private replayWindow: Set<bigint>
 
   constructor(baseKey: Uint8Array, keyId: number = 0) {
     this.baseKey = baseKey
@@ -128,7 +128,7 @@ export class SFrameDecryptor {
       throw new Error(`Key ID mismatch: expected ${this.keyId}, got ${keyId}`)
     }
 
-    const replayKey = (keyId << 32) | counter
+    const replayKey = (BigInt(keyId) << 32n) | BigInt(counter)
     if (this.replayWindow.has(replayKey)) {
       throw new Error('Replay detected')
     }
@@ -140,8 +140,8 @@ export class SFrameDecryptor {
 
     this.replayWindow.add(replayKey)
     if (this.replayWindow.size > 64) {
-      const keys = Array.from(this.replayWindow.keys())
-      keys.sort((a, b) => a - b)
+      const keys = Array.from(this.replayWindow)
+      keys.sort((a, b) => (a < b ? -1 : 1))
       const firstKey = keys[0]
       if (firstKey !== undefined) {
         this.replayWindow.delete(firstKey)

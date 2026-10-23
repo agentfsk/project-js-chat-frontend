@@ -1,4 +1,5 @@
 import { IdentityKeyPair, PreKeyPair, SignedPreKeyPair } from './x3dh'
+import type { MLSGroup, MLSMember, Credential } from '../groupCall/mls'
 
 export interface IdentityKeyStore {
   getIdentityKeyPair(): Promise<IdentityKeyPair | null>
@@ -22,12 +23,83 @@ export interface SessionStore {
   removeSession(callId: string): Promise<void>
 }
 
+export interface MLSGroupStore {
+  getGroup(groupId: string): Promise<MLSGroup | null>
+  saveGroup(group: MLSGroup): Promise<void>
+  removeGroup(groupId: string): Promise<void>
+  getAllGroups(): Promise<MLSGroup[]>
+}
+
+export interface MLSIdentityStore {
+  getIdentityExport(): Promise<Uint8Array | null>
+  saveIdentityExport(exportBytes: Uint8Array): Promise<void>
+}
+
 function jsonParse<T>(data: string | null): T | null {
   if (!data) return null
   try {
     return JSON.parse(data) as T
   } catch {
     return null
+  }
+}
+
+function arrayToBase64(arr: Uint8Array): string {
+  return btoa(String.fromCharCode(...arr))
+}
+
+function base64ToArray(str: string): Uint8Array {
+  const binary = atob(str)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
+
+function serializeMLSGroup(group: MLSGroup): string {
+  return JSON.stringify({
+    groupId: group.groupId,
+    epoch: group.epoch,
+    members: Array.from(group.members.entries()).map(([userId, member]) => [
+      userId,
+      {
+        userId: member.userId,
+        index: member.index,
+        credential: {
+          credentialType: member.credential.credentialType,
+          identity: member.credential.identity,
+          signatureKey: arrayToBase64(member.credential.signatureKey),
+        },
+        signatureKey: arrayToBase64(member.signatureKey),
+        encryptionKey: arrayToBase64(member.encryptionKey),
+      },
+    ]),
+    exportSecret: arrayToBase64(group.exportSecret),
+  })
+}
+
+function deserializeMLSGroup(data: string): MLSGroup {
+  const parsed = JSON.parse(data)
+  const members = new Map<string, MLSMember>()
+  for (const [userId, member] of parsed.members) {
+    members.set(userId, {
+      userId: member.userId,
+      index: member.index,
+      credential: {
+        credentialType: member.credential.credentialType,
+        identity: member.credential.identity,
+        signatureKey: base64ToArray(member.credential.signatureKey),
+      },
+      signatureKey: base64ToArray(member.signatureKey),
+      encryptionKey: base64ToArray(member.encryptionKey),
+    })
+  }
+  return {
+    groupId: parsed.groupId,
+    epoch: parsed.epoch,
+    members,
+    exportSecret: base64ToArray(parsed.exportSecret),
   }
 }
 
@@ -114,14 +186,72 @@ export class WebSessionStore implements SessionStore {
   }
 }
 
+export class WebMLSGroupStore implements MLSGroupStore {
+  private static PREFIX = 'messenger_mls_group_'
+
+  async getGroup(groupId: string): Promise<MLSGroup | null> {
+    if (typeof window === 'undefined') return null
+    const data = localStorage.getItem(`${WebMLSGroupStore.PREFIX}${groupId}`)
+    if (!data) return null
+    return deserializeMLSGroup(data)
+  }
+
+  async saveGroup(group: MLSGroup): Promise<void> {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(`${WebMLSGroupStore.PREFIX}${group.groupId}`, serializeMLSGroup(group))
+  }
+
+  async removeGroup(groupId: string): Promise<void> {
+    if (typeof window === 'undefined') return
+    localStorage.removeItem(`${WebMLSGroupStore.PREFIX}${groupId}`)
+  }
+
+  async getAllGroups(): Promise<MLSGroup[]> {
+    if (typeof window === 'undefined') return []
+    const groups: MLSGroup[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(WebMLSGroupStore.PREFIX)) {
+        const data = localStorage.getItem(key)
+        if (data) {
+          try {
+            groups.push(deserializeMLSGroup(data))
+          } catch {}
+        }
+      }
+    }
+    return groups
+  }
+}
+
+export class WebMLSIdentityStore implements MLSIdentityStore {
+  private static KEY = 'messenger_mls_identity_export'
+
+  async getIdentityExport(): Promise<Uint8Array | null> {
+    if (typeof window === 'undefined') return null
+    const data = localStorage.getItem(WebMLSIdentityStore.KEY)
+    if (!data) return null
+    return base64ToArray(data)
+  }
+
+  async saveIdentityExport(exportBytes: Uint8Array): Promise<void> {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(WebMLSIdentityStore.KEY, arrayToBase64(exportBytes))
+  }
+}
+
 export function createWebStores(): {
   identity: IdentityKeyStore
   preKey: PreKeyStore
   session: SessionStore
+  mlsGroup: MLSGroupStore
+  mlsIdentity: MLSIdentityStore
 } {
   return {
     identity: new WebIdentityKeyStore(),
     preKey: new WebPreKeyStore(),
     session: new WebSessionStore(),
+    mlsGroup: new WebMLSGroupStore(),
+    mlsIdentity: new WebMLSIdentityStore(),
   }
 }

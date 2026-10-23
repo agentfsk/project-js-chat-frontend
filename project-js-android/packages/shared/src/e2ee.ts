@@ -33,7 +33,7 @@ let signedPreKeyPair: SignedPreKeyPair | null = null
 let preKeys: PreKeyPair[] = []
 const PRE_KEY_COUNT = 100
 
-export async function initializeIdentityKeys(
+export function initializeIdentityKeys(
   getIdentityKeyPair: () => Promise<IdentityKeyPair | null>,
   saveIdentityKeyPair: (kp: IdentityKeyPair) => Promise<void>,
   getSignedPreKey: () => Promise<SignedPreKeyPair | null>,
@@ -50,7 +50,7 @@ export async function initializeIdentityKeys(
 
   let spkp = await getSignedPreKey()
   if (!spkp) {
-    spkp = generateSignedPreKeyPair(ikp.privateKey, Date.now())
+    spkp = generateSignedPreKeyPair(ikp, Date.now())
     await saveSignedPreKey(spkp)
   }
   signedPreKeyPair = spkp
@@ -73,7 +73,7 @@ export function rotatePreKeys(
   savePreKeys: (kps: PreKeyPair[]) => Promise<void>
 ): void {
   if (!identityKeyPair) return
-  signedPreKeyPair = generateSignedPreKeyPair(identityKeyPair.privateKey, Date.now())
+  signedPreKeyPair = generateSignedPreKeyPair(identityKeyPair, Date.now())
   saveSignedPreKey(signedPreKeyPair)
 
   const newPreKeys: PreKeyPair[] = []
@@ -115,7 +115,8 @@ export function createE2EEContext(
     localSignedPreKeyPair,
     localPreKeyPair,
     ephemeralKeyPair,
-    remoteKeyPackage
+    remoteKeyPackage,
+    isInitiator
   )
 
   const ratchet = new DoubleRatchet()

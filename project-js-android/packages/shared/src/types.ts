@@ -156,3 +156,120 @@ export type SafetyNumber = {
   qrData: string
   verified: boolean
 }
+
+export type GroupCallMode = 'audio' | 'video'
+
+export type GroupCallPhase = 'idle' | 'connecting' | 'joined' | 'leaving' | 'ended'
+
+export type GroupCallRole = 'creator' | 'admin' | 'participant'
+
+export type GroupCallParticipant = {
+  userId: string
+  displayName: string
+  avatarUrl: string | null
+  role: GroupCallRole
+  isMuted: boolean
+  isCameraOn: boolean
+  isScreenSharing: boolean
+  isSpeaking: boolean
+  audioLevel: number
+  joinedAt: Date
+  sframeKeyId?: number
+}
+
+export type GroupCallPeer = {
+  userId: string
+  socketId: string
+  displayName: string
+  avatarUrl: string | null
+  role: GroupCallRole
+  isMuted: boolean
+  isCameraOn: boolean
+  isScreenSharing: boolean
+  isSpeaking: boolean
+  audioLevel: number
+  joinedAt: Date
+  sframeKeyId: number
+}
+
+export interface GroupCallState {
+  callId: string
+  channelId: number
+  mode: GroupCallMode
+  phase: GroupCallPhase
+  creatorId: string
+  participants: Map<string, GroupCallParticipant>
+  localParticipant: GroupCallParticipant | null
+  createdAt: Date
+  startedAt: Date | null
+  endedAt: Date | null
+  sframeKeys: Map<number, SFrameKey>
+  localKeyId: number
+}
+
+export type GroupCallCreatedPayload = {
+  callId: string
+  channelId: number
+  mode: GroupCallMode
+}
+
+export type GroupCallInvitePayload = {
+  callId: string
+  channelId: number
+  mode: GroupCallMode
+  creator: UserProfile
+}
+
+export type GroupCallPeerJoinedPayload = {
+  callId: string
+  peer: GroupCallPeer
+}
+
+export type GroupCallPeerLeftPayload = {
+  callId: string
+  peerId: string
+}
+
+export type GroupCallSignalPayload = {
+  callId: string
+  targetUserId: string
+  signal: any
+}
+
+export type GroupCallMLSMessagePayload = {
+  callId: string
+  fromUserId: string
+  message: any
+}
+
+export type GroupCallNewProducerPayload = {
+  callId: string
+  producerId: string
+  kind: 'audio' | 'video'
+  producerUserId: string
+}
+
+export type GroupCallPeerUpdatePayload = {
+  callId: string
+  peerId: string
+  updates: Partial<GroupCallPeer>
+}
+
+export type GroupCallProducePayload = {
+  callId: string
+  kind: 'audio' | 'video'
+  rtpParameters: any
+  appData: any
+}
+
+export type GroupCallConsumePayload = {
+  callId: string
+  producerId: string
+  rtpCapabilities: any
+}
+
+export type SFrameKey = {
+  keyId: number
+  key: Uint8Array
+  salt: Uint8Array
+}

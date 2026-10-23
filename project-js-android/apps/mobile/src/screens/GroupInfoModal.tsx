@@ -2,7 +2,8 @@ import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, FlatList } from 'react-native'
 import { useNavigation, useRoute, type RouteProp, type NavigationProp } from '@react-navigation/native'
 import { useChatStore } from '@shared/store/chat'
-import { emitRemoveGroup, emitEditGroup, emitInviteToGroup, emitKickFromGroup } from '@shared/socket'
+import { emitRemoveGroup, emitEditGroup, emitInviteToGroup, emitKickFromGroup, emitGroupCallCreate } from '@shared/socket'
+import { Ionicons } from '@expo/vector-icons'
 
 type GroupInfoRouteParams = { channel: any }
 type GroupInfoRouteProp = RouteProp<{ GroupInfo: GroupInfoRouteParams }, 'GroupInfo'>
@@ -16,7 +17,9 @@ export function GroupInfoModal() {
   const route = useRoute<GroupInfoRouteProp>()
   const { channel } = route.params
   const { updateChannel, removeChannel } = useChatStore()
-  const isOwner = channel?.ownerId === require('@shared/store/auth').useAuthStore.getState().token
+  const { useAuthStore } = require('@shared/store/auth')
+  const token = useAuthStore.getState().token
+  const isOwner = channel?.ownerId === token
 
   const handleDelete = () => {
     Alert.alert('Удалить группу', 'Это действие нельзя отменить. Все сообщения будут удалены.', [
@@ -40,6 +43,20 @@ export function GroupInfoModal() {
         catch (err: any) { Alert.alert('Ошибка', err.message) }
       }}
     ])
+  }
+
+  const startGroupCall = async (mode: 'audio' | 'video') => {
+    try {
+      await emitGroupCallCreate({
+        callId: `call-${channel.id}-${Date.now()}`,
+        channelId: channel.id,
+        mode,
+      })
+      Alert.alert('Групповой звонок запущен', `Приглашения отправлены участникам`)
+      // Navigate to group call screen would happen here
+    } catch (err: any) {
+      Alert.alert('Ошибка', err.message)
+    }
   }
 
   if (!channel) return null
@@ -79,6 +96,19 @@ export function GroupInfoModal() {
 
       {isOwner && (
         <View style={styles.ownerActions}>
+          <View style={styles.callSection}>
+            <Text style={styles.callSectionTitle}>Групповой звонок</Text>
+            <View style={styles.callButtons}>
+              <TouchableOpacity style={styles.callButton} onPress={() => startGroupCall('audio')}>
+                <Ionicons name="mic" size={24} color="#fff" />
+                <Text style={styles.callButtonText}>Голосовой чат</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.callButton} onPress={() => startGroupCall('video')}>
+                <Ionicons name="videocam" size={24} color="#fff" />
+                <Text style={styles.callButtonText}>Видео чат</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           <TouchableOpacity style={styles.actionButton} onPress={handleInvite}><Text style={styles.actionButtonText}>Пригласить друзей</Text></TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={handleEdit}><Text style={styles.actionButtonText}>Изменить группу</Text></TouchableOpacity>
           <TouchableOpacity style={[styles.actionButton, styles.dangerButton]} onPress={handleDelete}><Text style={styles.actionButtonText}>Удалить группу</Text></TouchableOpacity>
@@ -112,4 +142,9 @@ const styles = StyleSheet.create({
   actionButton: { backgroundColor: '#1e1e1e', padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   actionButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   dangerButton: { borderColor: '#ef4444' },
+  callSection: { marginTop: 8 },
+  callSectionTitle: { color: '#888', fontSize: 14, fontWeight: '600', marginBottom: 12 },
+  callButtons: { flexDirection: 'row', gap: 12 },
+  callButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1e1e1e', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#333' },
+  callButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 })

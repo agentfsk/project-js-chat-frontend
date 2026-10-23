@@ -107,3 +107,52 @@ export async function sendMessagePush(fcmToken, messageData) {
     return false;
   }
 }
+
+export async function sendGroupCallPush(fcmToken, callData) {
+  if (!messaging) {
+    const initResult = initFCM();
+    if (!initResult) return false;
+  }
+  
+  try {
+    const data: any = {
+      type: 'groupCallInvite',
+      callId: callData.callId,
+      channelId: String(callData.channelId),
+      mode: callData.mode,
+      creatorId: String(callData.creator.id),
+      creatorName: callData.creator.username,
+      creatorAvatar: callData.creator.avatarUrl || '',
+    }
+    
+    await messaging.send({
+      token: fcmToken,
+      data,
+      android: {
+        priority: 'high',
+        notification: {
+          title: 'Групповой звонок',
+          body: `${callData.creator.username} начал групповой ${callData.mode === 'video' ? 'видео' : 'голосовой'} чат`,
+          icon: 'ic_notification',
+          channelId: 'calls',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            alert: {
+              title: 'Групповой звонок',
+              body: `${callData.creator.username} начал групповой ${callData.mode === 'video' ? 'видео' : 'голосовой'} чат`,
+            },
+            sound: 'default',
+            category: 'CALL_INCOMING',
+          },
+        },
+      },
+    });
+    return true;
+  } catch (err) {
+    console.error('Failed to send group call FCM push:', err);
+    return false;
+  }
+}

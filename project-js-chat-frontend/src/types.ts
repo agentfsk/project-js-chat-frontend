@@ -164,3 +164,74 @@ export type PreKeyBundle = {
     publicKey: string
   }
 }
+
+export type GroupCallCreatedPayload = {
+  callId: string
+  channelId: number
+  mode: 'audio' | 'video'
+  rtpCapabilities: any
+  iceServers: RTCIceServer[]
+}
+
+export type GroupCallInvitePayload = {
+  callId: string
+  channelId: number
+  mode: 'audio' | 'video'
+  creatorId: string
+  creatorName: string
+  creatorAvatarUrl: string | null
+}
+
+export type GroupCallPeerJoinedPayload = {
+  callId: string
+  peer: {
+    userId: string
+    displayName: string
+    avatarUrl: string | null
+    role: string
+  }
+}
+
+export type GroupCallPeerLeftPayload = {
+  callId: string
+  peerId: string
+}
+
+export type GroupCallSignalPayload = {
+  callId: string
+  fromUserId: string
+  signal: any
+}
+
+export type GroupCallMLSMessagePayload = {
+  callId: string
+  fromUserId: string
+  message: any
+}
+
+export type GroupCallNewProducerPayload = {
+  callId: string
+  producerId: string
+  kind: 'audio' | 'video'
+  producerUserId: string
+}
+
+export type GroupCallPeerUpdatePayload = {
+  callId: string
+  peerId: string
+  updates: Partial<GroupCallPeer>
+}
+
+export type GroupCallPeer = {
+  userId: string
+  displayName: string
+  avatarUrl: string | null
+  role: string
+  isMuted: boolean
+  isCameraOn: boolean
+  isScreenSharing: boolean
+  isSpeaking: boolean
+  audioLevel: number
+  joinedAt: string
+  sframeKeyId?: number
+}

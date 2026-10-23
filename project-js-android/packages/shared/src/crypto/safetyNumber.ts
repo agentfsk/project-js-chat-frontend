@@ -6,7 +6,19 @@ export const SAFETY_NUMBER_DIGITS_PER_GROUP = 4
 const SAFETY_NUMBER_MASK = (1n << BigInt(SAFETY_NUMBER_BITS)) - 1n
 
 export function computeSafetyNumber(identityKeyA: Uint8Array, identityKeyB: Uint8Array): bigint {
-  const combined = concatBytes(identityKeyA, identityKeyB)
+  let combined: Uint8Array
+  let cmp = 0
+  for (let i = 0; i < 32; i++) {
+    if (identityKeyA[i] !== identityKeyB[i]) {
+      cmp = identityKeyA[i] < identityKeyB[i] ? -1 : 1
+      break
+    }
+  }
+  if (cmp <= 0) {
+    combined = concatBytes(identityKeyA, identityKeyB)
+  } else {
+    combined = concatBytes(identityKeyB, identityKeyA)
+  }
   const hash = hkdfSHA256(new Uint8Array(32), combined, new TextEncoder().encode('safety-number'), 8)
   let result = 0n
   for (let i = 0; i < 8; i++) {
@@ -16,12 +28,10 @@ export function computeSafetyNumber(identityKeyA: Uint8Array, identityKeyB: Uint
 }
 
 export function formatSafetyNumber(safetyNumber: bigint): string {
+  const decimal = safetyNumber.toString(10).padStart(20, '0')
   const groups: string[] = []
-  let num = safetyNumber
   for (let i = 0; i < SAFETY_NUMBER_GROUPS; i++) {
-    const group = num & 0xFFFFn
-    groups.unshift(group.toString(10).padStart(SAFETY_NUMBER_DIGITS_PER_GROUP, '0'))
-    num >>= 16n
+    groups.push(decimal.slice(i * 4, (i + 1) * 4))
   }
   return groups.join(' ')
 }
@@ -31,16 +41,14 @@ export function parseSafetyNumber(formatted: string): bigint {
   if (groups.length !== SAFETY_NUMBER_GROUPS * SAFETY_NUMBER_DIGITS_PER_GROUP) {
     throw new Error('Invalid safety number format')
   }
-  let result = 0n
-  for (let i = 0; i < groups.length; i += SAFETY_NUMBER_DIGITS_PER_GROUP) {
-    const group = BigInt(parseInt(groups.slice(i, i + SAFETY_NUMBER_DIGITS_PER_GROUP), 10))
-    result = (result << 16n) | group
+  if (!/^\d+$/.test(groups)) {
+    throw new Error('Invalid safety number format')
   }
-  return result
+  return BigInt(groups)
 }
 
 export function generateQRData(safetyNumber: bigint, username: string): string {
-  const fingerprint = safetyNumber.toString(16).padStart(15, '0')
+  const fingerprint = safetyNumber.toString(16)
   return `messenger://verify?fp=${fingerprint}&user=${encodeURIComponent(username)}`
 }
 

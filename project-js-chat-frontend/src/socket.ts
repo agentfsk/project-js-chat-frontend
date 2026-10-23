@@ -6,7 +6,7 @@ import { useUsersStore } from './store/users'
 import { useAuthStore } from './store/auth'
 import { attachmentKind, shouldAnnounce, toastPreview, useToastStore } from './store/toasts'
 import * as callManager from './callManager'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, GroupCallCreatedPayload, GroupCallInvitePayload, GroupCallPeerJoinedPayload, GroupCallPeerLeftPayload, GroupCallSignalPayload, GroupCallMLSMessagePayload, GroupCallNewProducerPayload, GroupCallPeerUpdatePayload, GroupCallPeer } from './types'
 
 type AckPayload = { status: string; message?: string; data?: unknown }
 
@@ -98,6 +98,30 @@ export function connectSocket(): Socket | null {
   })
   socket.on('callIncoming', (payload) => {
     callManager.onCallIncoming(payload)
+  })
+  socket.on('groupCallCreated', (payload: GroupCallCreatedPayload) => {
+    // Handle group call created
+  })
+  socket.on('groupCallInvite', (payload: GroupCallInvitePayload) => {
+    // Handle group call invite
+  })
+  socket.on('groupCallPeerJoined', (payload: GroupCallPeerJoinedPayload) => {
+    // Handle peer joined
+  })
+  socket.on('groupCallPeerLeft', (payload: GroupCallPeerLeftPayload) => {
+    // Handle peer left
+  })
+  socket.on('groupCallSignal', (payload: GroupCallSignalPayload) => {
+    // Handle signaling
+  })
+  socket.on('groupCallMLSMessage', (payload: GroupCallMLSMessagePayload) => {
+    // Handle MLS message
+  })
+  socket.on('groupCallNewProducer', (payload: GroupCallNewProducerPayload) => {
+    // Handle new producer
+  })
+  socket.on('groupCallPeerUpdate', (payload: GroupCallPeerUpdatePayload) => {
+    // Handle peer update
   })
   socket.on('callAnswered', (payload) => {
     callManager.onCallAnswered(payload)
@@ -270,4 +294,68 @@ export function emitCallReject(callId: string): Promise<void> {
 
 export function emitCallHangup(callId: string, reason: string): Promise<void> {
   return emitWithAck<void>('callHangup', { callId, reason })
+}
+
+// Group call functions
+export function emitGroupCallCreate(payload: {
+  callId: string
+  channelId: number
+  mode: 'audio' | 'video'
+}): Promise<void> {
+  return emitWithAck<void>('groupCallCreate', payload)
+}
+
+export function emitGroupCallJoin(payload: {
+  callId: string
+  userId: string
+  rtpCapabilities: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallJoin', payload)
+}
+
+export function emitGroupCallLeave(payload: {
+  callId: string
+  userId: string
+}): Promise<void> {
+  return emitWithAck<void>('groupCallLeave', payload)
+}
+
+export function emitGroupCallSignal(payload: {
+  callId: string
+  targetUserId: string
+  signal: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallSignal', payload)
+}
+
+export function emitGroupCallProduce(payload: {
+  callId: string
+  kind: 'audio' | 'video'
+  rtpParameters: any
+  appData: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallProduce', payload)
+}
+
+export function emitGroupCallConsume(payload: {
+  callId: string
+  producerId: string
+  rtpCapabilities: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallConsume', payload)
+}
+
+export function emitGroupCallMLSMessage(payload: {
+  callId: string
+  message: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallMLSMessage', payload)
+}
+
+export function emitGroupCallPeerUpdate(payload: {
+  callId: string
+  peerId: string
+  updates: Partial<GroupCallPeer>
+}): Promise<void> {
+  return emitWithAck<void>('groupCallPeerUpdate', payload)
 }

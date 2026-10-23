@@ -4,7 +4,8 @@ import { randomBytes } from '@noble/hashes/utils'
 
 export interface IdentityKeyPair {
   privateKey: Uint8Array
-  publicKey: Uint8Array
+  ed25519PublicKey: Uint8Array
+  x25519PublicKey: Uint8Array
 }
 
 export interface PreKeyPair {
@@ -40,10 +41,15 @@ export interface KeyPackage {
   ephemeralKey: string
 }
 
+function generateIdentityKeyPairInternal(): IdentityKeyPair {
+  const privateKey = x25519.utils.randomPrivateKey()
+  const x25519PublicKey = x25519.getPublicKey(privateKey)
+  const ed25519PublicKey = ed25519.getPublicKey(privateKey)
+  return { privateKey, ed25519PublicKey, x25519PublicKey }
+}
+
 export function generateIdentityKeyPair(): IdentityKeyPair {
-  const privateKey = ed25519.utils.randomPrivateKey()
-  const publicKey = ed25519.getPublicKey(privateKey)
-  return { privateKey, publicKey }
+  return generateIdentityKeyPairInternal()
 }
 
 export function generateX25519KeyPair(): { privateKey: Uint8Array; publicKey: Uint8Array } {
@@ -52,9 +58,9 @@ export function generateX25519KeyPair(): { privateKey: Uint8Array; publicKey: Ui
   return { privateKey, publicKey }
 }
 
-export function generateSignedPreKeyPair(identityKey: Uint8Array, keyId: number): SignedPreKeyPair {
+export function generateSignedPreKeyPair(identityKeyPair: IdentityKeyPair, keyId: number): SignedPreKeyPair {
   const { privateKey, publicKey } = generateX25519KeyPair()
-  const signature = ed25519.sign(concatBytes(identityKey, publicKey), identityKey)
+  const signature = ed25519.sign(concatBytes(identityKeyPair.ed25519PublicKey, publicKey), identityKeyPair.privateKey)
   return { keyId, privateKey, publicKey, signature }
 }
 
@@ -69,7 +75,7 @@ export function generatePreKeyBundle(
   oneTimePreKeys: PreKeyPair[]
 ): PreKeyBundle {
   return {
-    identityKey: identityKeyPair.publicKey,
+    identityKey: identityKeyPair.x25519PublicKey,
     signedPreKey: signedPreKeyPair,
     oneTimePreKeys,
   }
@@ -120,13 +126,24 @@ export function computeSharedSecret(
   signedPreKeyPair: SignedPreKeyPair,
   oneTimePreKeyPair: PreKeyPair | undefined,
   ephemeralKeyPair: { privateKey: Uint8Array; publicKey: Uint8Array },
-  peerKeyPackage: KeyPackage
+  peerKeyPackage: KeyPackage,
+  isInitiator: boolean
 ): Uint8Array {
   const peer = parseKeyPackage(peerKeyPackage)
 
-  const dh1 = x25519.getSharedSecret(ephemeralKeyPair.privateKey, peer.signedPreKeyPublicKey)
-  const dh2 = x25519.getSharedSecret(identityKeyPair.privateKey, peer.ephemeralKey)
-  const dh3 = x25519.getSharedSecret(signedPreKeyPair.privateKey, peer.ephemeralKey)
+  let dh1: Uint8Array
+  let dh2: Uint8Array
+  let dh3: Uint8Array
+
+  if (isInitiator) {
+    dh1 = x25519.getSharedSecret(ephemeralKeyPair.privateKey, peer.signedPreKeyPublicKey)
+    dh2 = x25519.getSharedSecret(identityKeyPair.privateKey, peer.ephemeralKey)
+    dh3 = x25519.getSharedSecret(signedPreKeyPair.privateKey, peer.ephemeralKey)
+  } else {
+    dh1 = x25519.getSharedSecret(signedPreKeyPair.privateKey, peer.ephemeralKey)
+    dh2 = x25519.getSharedSecret(ephemeralKeyPair.privateKey, peer.identityKey)
+    dh3 = x25519.getSharedSecret(ephemeralKeyPair.privateKey, peer.signedPreKeyPublicKey)
+  }
 
   let dh4: Uint8Array | null = null
   if (oneTimePreKeyPair && peer.oneTimePreKeyPublicKey) {

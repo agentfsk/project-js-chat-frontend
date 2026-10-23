@@ -1,12 +1,13 @@
 import { io, type Socket } from 'socket.io-client'
 export type { Socket } from 'socket.io-client'
 import type { StorageAdapter } from './storage'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, CallEndedPayload, CallActivePayload } from './types'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, CallEndedPayload, CallActivePayload, GroupCallCreatedPayload, GroupCallInvitePayload, GroupCallPeerJoinedPayload, GroupCallPeerLeftPayload, GroupCallSignalPayload, GroupCallMLSMessagePayload, GroupCallNewProducerPayload, GroupCallPeerUpdatePayload, GroupCallPeer } from './types'
 import type { ChatState } from './store/chat'
 import type { UnreadState } from './store/unread'
 import type { UsersState } from './store/users'
 import type { ToastState } from './store/toasts'
 import { onCallEnded, onCallActive, onSocketClosed } from './callManager'
+import { onGroupCallCreated, onGroupCallInvite, onGroupCallPeerJoined, onGroupCallPeerLeft, onGroupCallSignal, onGroupCallMLSMessage, onGroupCallNewProducer, onGroupCallPeerUpdate } from './groupCallManager'
 
 // Polyfills for React Native
 declare var global: any
@@ -147,6 +148,30 @@ export async function connectSocket(): Promise<Socket | null> {
   })
   socket.on('callActive', (payload: CallActivePayload) => {
     onCallActive(payload)
+  })
+  socket.on('groupCallCreated', (payload: GroupCallCreatedPayload) => {
+    onGroupCallCreated(payload)
+  })
+  socket.on('groupCallInvite', (payload: GroupCallInvitePayload) => {
+    onGroupCallInvite(payload)
+  })
+  socket.on('groupCallPeerJoined', (payload: GroupCallPeerJoinedPayload) => {
+    onGroupCallPeerJoined(payload)
+  })
+  socket.on('groupCallPeerLeft', (payload: GroupCallPeerLeftPayload) => {
+    onGroupCallPeerLeft(payload)
+  })
+  socket.on('groupCallSignal', (payload: GroupCallSignalPayload) => {
+    onGroupCallSignal(payload)
+  })
+  socket.on('groupCallMLSMessage', (payload: GroupCallMLSMessagePayload) => {
+    onGroupCallMLSMessage(payload)
+  })
+  socket.on('groupCallNewProducer', (payload: GroupCallNewProducerPayload) => {
+    onGroupCallNewProducer(payload)
+  })
+  socket.on('groupCallPeerUpdate', (payload: GroupCallPeerUpdatePayload) => {
+    onGroupCallPeerUpdate(payload)
   })
   socket.on('disconnect', () => {
     onSocketClosed()
@@ -300,6 +325,70 @@ export function emitCallReject(callId: string): Promise<void> {
 
 export function emitCallHangup(callId: string, reason: string): Promise<void> {
   return emitWithAck<void>('callHangup', { callId, reason })
+}
+
+// Group call functions
+export function emitGroupCallCreate(payload: {
+  callId: string
+  channelId: number
+  mode: 'audio' | 'video'
+}): Promise<void> {
+  return emitWithAck<void>('groupCallCreate', payload)
+}
+
+export function emitGroupCallJoin(payload: {
+  callId: string
+  userId: string
+  rtpCapabilities: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallJoin', payload)
+}
+
+export function emitGroupCallLeave(payload: {
+  callId: string
+  userId: string
+}): Promise<void> {
+  return emitWithAck<void>('groupCallLeave', payload)
+}
+
+export function emitGroupCallSignal(payload: {
+  callId: string
+  targetUserId: string
+  signal: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallSignal', payload)
+}
+
+export function emitGroupCallProduce(payload: {
+  callId: string
+  kind: 'audio' | 'video'
+  rtpParameters: any
+  appData: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallProduce', payload)
+}
+
+export function emitGroupCallConsume(payload: {
+  callId: string
+  producerId: string
+  rtpCapabilities: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallConsume', payload)
+}
+
+export function emitGroupCallMLSMessage(payload: {
+  callId: string
+  message: any
+}): Promise<void> {
+  return emitWithAck<void>('groupCallMLSMessage', payload)
+}
+
+export function emitGroupCallPeerUpdate(payload: {
+  callId: string
+  peerId: string
+  updates: Partial<GroupCallPeer>
+}): Promise<void> {
+  return emitWithAck<void>('groupCallPeerUpdate', payload)
 }
 
 // Toast utilities (copied from toasts store for socket to use without circular deps)

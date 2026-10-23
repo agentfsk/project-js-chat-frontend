@@ -111,3 +111,26 @@ The system SHALL inform the caller when a call cannot connect or is not answered
 #### Scenario: Connection drops during an E2EE call
 - **WHEN** either participant's connection drops (for example, the page is reloaded or the browser is closed) while an E2EE call is ringing or active
 - **THEN** the call ends on both sides, the interrupted participant's call UI closes, the remaining peer is no longer busy so a new call can be started immediately; E2EE session keys are erased
+
+### Requirement: Crypto unit tests verify cryptographic primitives
+The system SHALL provide comprehensive unit tests for all cryptographic primitives used in E2EE, using RFC test vectors where available.
+
+#### Scenario: HKDF tests with RFC 5869 vectors
+- **WHEN** running HKDF tests
+- **THEN** hkdfExtract, hkdfExpand, hkdfSHA256 match RFC 5869 Section A.1, A.2, A.3 test vectors
+
+#### Scenario: SFrame encrypt/decrypt roundtrip
+- **WHEN** encrypting and decrypting frames with SFrame
+- **THEN** encrypt/decrypt roundtrip succeeds, replay protection works, keyID mismatch is rejected
+
+#### Scenario: X3DH shared secret computation
+- **WHEN** computing X3DH shared secret with both parties
+- **THEN** Alice and Bob derive identical shared secrets (initiator and responder), different ephemeral keys produce different secrets
+
+#### Scenario: Double Ratchet send/receive sync
+- **WHEN** Alice sends and Bob receives messages
+- **THEN** message keys match on both sides, chain keys advance correctly, DH ratchet works
+
+#### Scenario: Safety Number computation and formatting
+- **WHEN** computing safety number from identity keys
+- **THEN** fingerprint is deterministic, commutative, 60-bit, formats as 5×4 digit groups, roundtrips with parsing

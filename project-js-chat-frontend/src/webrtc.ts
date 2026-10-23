@@ -11,6 +11,46 @@ export type EngineOptions = {
   encryptionContext?: E2EEContext
 }
 
+function createEncryptTransform(encryptor: any): TransformStream {
+  return new TransformStream({
+    transform(controller: any, chunk: any) {
+      try {
+        if (chunk instanceof RTCEncodedAudioFrame || chunk instanceof RTCEncodedVideoFrame) {
+          const data = new Uint8Array(chunk.data.byteLength)
+          data.set(new Uint8Array(chunk.data))
+          const encrypted = encryptor.encrypt(data)
+          const newData = new ArrayBuffer(encrypted.byteLength)
+          new Uint8Array(newData).set(encrypted)
+          chunk.data = newData
+        }
+        controller.enqueue(chunk)
+      } catch (e) {
+        controller.error(e)
+      }
+    }
+  })
+}
+
+function createDecryptTransform(decryptor: any): TransformStream {
+  return new TransformStream({
+    transform(controller: any, chunk: any) {
+      try {
+        if (chunk instanceof RTCEncodedAudioFrame || chunk instanceof RTCEncodedVideoFrame) {
+          const data = new Uint8Array(chunk.data.byteLength)
+          data.set(new Uint8Array(chunk.data))
+          const decrypted = decryptor.decrypt(data)
+          const newData = new ArrayBuffer(decrypted.byteLength)
+          new Uint8Array(newData).set(decrypted)
+          chunk.data = newData
+        }
+        controller.enqueue(chunk)
+      } catch (e) {
+        controller.error(e)
+      }
+    }
+  })
+}
+
 export class CallEngine {
   private pc: RTCPeerConnection
   private localStream: MediaStream
@@ -33,6 +73,8 @@ export class CallEngine {
   private onRemoteVideo?: (active: boolean) => void
   private lastRemoteVideo = false
   private encryptionContext?: E2EEContext
+  private senderTransforms: Map<RTCRtpSender, TransformStream> = new Map()
+  private receiverTransforms: Map<RTCRtpReceiver, TransformStream> = new Map()
 
   constructor(options: EngineOptions) {
     this.polite = options.polite ?? false
@@ -48,6 +90,7 @@ export class CallEngine {
       this.onSignal({ type: 'ice', candidate: event.candidate ? event.candidate.toJSON() : null })
     }
     this.pc.ontrack = (event) => {
+      this.setupReceiverTransform(event.receiver)
       this.updateRemoteStream(event.track)
       this.updateRemoteMedia()
     }
@@ -63,6 +106,31 @@ export class CallEngine {
     }
   }
 
+  private setupSenderTransform(sender: RTCRtpSender): void {
+    if (!this.encryptionContext || sender.transform) return
+    const transform = createEncryptTransform(this.encryptionContext.encryptor)
+    this.senderTransforms.set(sender, transform)
+    sender.transform = transform
+  }
+
+  private setupReceiverTransform(receiver: RTCRtpReceiver): void {
+    if (!this.encryptionContext || receiver.transform) return
+    const transform = createDecryptTransform(this.encryptionContext.decryptor)
+    this.receiverTransforms.set(receiver, transform)
+    receiver.transform = transform
+  }
+
+  private clearTransforms(): void {
+    for (const [sender, transform] of this.senderTransforms) {
+      sender.transform = null
+    }
+    for (const [receiver, transform] of this.receiverTransforms) {
+      receiver.transform = null
+    }
+    this.senderTransforms.clear()
+    this.receiverTransforms.clear()
+  }
+
   async startLocalMedia(mode: CallMode): Promise<MediaStream> {
     const media = await navigator.mediaDevices.getUserMedia({
       audio: true,
@@ -70,13 +138,19 @@ export class CallEngine {
     })
     this.localStream = media
     const audioTrack = media.getAudioTracks()[0]
-    if (audioTrack) this.pc.addTrack(audioTrack, media)
+    if (audioTrack) {
+      const sender = this.pc.addTrack(audioTrack, media)
+      this.setupSenderTransform(sender)
+    }
     if (mode === 'video') {
       const track = media.getVideoTracks()[0]
       if (track) {
         this.cameraTrack = track
         this.camEnabled = true
         this.videoTransceiver = this.pc.addTransceiver(track, { streams: [this.localStream] })
+        if (this.videoTransceiver.sender) {
+          this.setupSenderTransform(this.videoTransceiver.sender)
+        }
       }
     }
     this.syncLocalVideoTrack()
@@ -134,6 +208,9 @@ export class CallEngine {
       this.cameraTrack.enabled = true
       if (!this.videoTransceiver) {
         this.videoTransceiver = this.pc.addTransceiver(this.cameraTrack, { streams: [this.localStream] })
+        if (this.videoTransceiver.sender) {
+          this.setupSenderTransform(this.videoTransceiver.sender)
+        }
       }
       this.syncLocalVideoTrack()
       await this.setVideoSource()
@@ -162,6 +239,9 @@ export class CallEngine {
     })
     if (!this.videoTransceiver) {
       this.videoTransceiver = this.pc.addTransceiver(track, { streams: [this.localStream] })
+      if (this.videoTransceiver.sender) {
+        this.setupSenderTransform(this.videoTransceiver.sender)
+      }
     }
     this.syncLocalVideoTrack()
     await this.setVideoSource()
@@ -182,6 +262,7 @@ export class CallEngine {
   teardown(): void {
     if (this.closed) return
     this.closed = true
+    this.clearTransforms()
     const tracks = new Set<MediaStreamTrack>(this.localStream.getTracks())
     if (this.cameraTrack) tracks.add(this.cameraTrack)
     this.screenStream?.getTracks().forEach((t) => tracks.add(t))
@@ -196,16 +277,6 @@ export class CallEngine {
 
   getSafetyNumber(): bigint | null {
     return this.encryptionContext?.safetyNumber ?? null
-  }
-
-  encryptFrame(frame: Uint8Array): Uint8Array {
-    if (!this.encryptionContext) return frame
-    return this.encryptionContext.encryptor.encrypt(frame)
-  }
-
-  decryptFrame(frame: Uint8Array): Uint8Array {
-    if (!this.encryptionContext) return frame
-    return this.encryptionContext.decryptor.decrypt(frame)
   }
 
   requestNegotiation(): void {

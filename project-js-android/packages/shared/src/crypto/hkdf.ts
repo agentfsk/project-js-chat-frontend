@@ -15,7 +15,7 @@ export function hkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): U
   }
   const n = Math.ceil(length / hashLen)
   const okm = new Uint8Array(n * hashLen)
-  const prev = new Uint8Array(0)
+  let prev = new Uint8Array(0)
   for (let i = 1; i <= n; i++) {
     const infoWithCounter = new Uint8Array(prev.length + info.length + 1)
     infoWithCounter.set(prev)
@@ -23,7 +23,7 @@ export function hkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): U
     infoWithCounter[infoWithCounter.length - 1] = i
     const h = hmac(sha256, prk, infoWithCounter)
     okm.set(h, (i - 1) * hashLen)
-    prev.set(h)
+    prev = h
   }
   return okm.slice(0, length)
 }

@@ -1,0 +1,28 @@
+{
+  "name": "project-js-media-server",
+  "version": "1.0.0",
+  "description": "Mediasoup SFU media server for group calls",
+  "main": "dist/worker.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/worker.js",
+    "dev": "tsx watch src/worker.ts",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "mediasoup": "^3.15.0",
+    "socket.io": "^4.8.1",
+    "pino": "^9.3.0",
+    "pino-pretty": "^11.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0",
+    "eslint": "^9.11.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
