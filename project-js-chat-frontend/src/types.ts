@@ -169,43 +169,36 @@ export type GroupCallCreatedPayload = {
   callId: string
   channelId: number
   mode: 'audio' | 'video'
-  rtpCapabilities: any
-  iceServers: RTCIceServer[]
+  rtpCapabilities?: any
+  iceServers?: RTCIceServer[]
 }
 
 export type GroupCallInvitePayload = {
   callId: string
   channelId: number
   mode: 'audio' | 'video'
-  creatorId: string
-  creatorName: string
-  creatorAvatarUrl: string | null
+  creator: UserProfile
 }
 
 export type GroupCallPeerJoinedPayload = {
   callId: string
-  peer: {
-    userId: string
-    displayName: string
-    avatarUrl: string | null
-    role: string
-  }
+  peer: UserProfile
 }
 
 export type GroupCallPeerLeftPayload = {
   callId: string
-  peerId: string
+  peerId: number
 }
 
 export type GroupCallSignalPayload = {
   callId: string
-  fromUserId: string
+  fromUserId: number
   signal: any
 }
 
 export type GroupCallMLSMessagePayload = {
   callId: string
-  fromUserId: string
+  fromUserId: string | number
   message: any
 }
 
@@ -213,25 +206,46 @@ export type GroupCallNewProducerPayload = {
   callId: string
   producerId: string
   kind: 'audio' | 'video'
-  producerUserId: string
+  producerUserId: string | number
+  appData?: Record<string, unknown>
 }
 
 export type GroupCallPeerUpdatePayload = {
   callId: string
-  peerId: string
-  updates: Partial<GroupCallPeer>
+  peerId: string | number
+  joined?: boolean
+  updates?: Partial<GroupCallPeer>
+}
+
+export type GroupCallEndedPayload = {
+  callId: string
+  channelId: number
+  reason: string
+}
+
+export type GroupCallKickedPayload = {
+  callId: string
 }
 
 export type GroupCallPeer = {
-  userId: string
-  displayName: string
-  avatarUrl: string | null
-  role: string
-  isMuted: boolean
-  isCameraOn: boolean
-  isScreenSharing: boolean
-  isSpeaking: boolean
-  audioLevel: number
-  joinedAt: string
+  userId: string | number
+  displayName?: string
+  avatarUrl?: string | null
+  role?: string
+  isMuted?: boolean
+  isCameraOn?: boolean
+  isScreenSharing?: boolean
+  isSpeaking?: boolean
+  audioLevel?: number
+  joinedAt?: string
   sframeKeyId?: number
+}
+
+export type ActiveGroupCall = {
+  callId: string
+  channelId: number
+  mode: 'audio' | 'video'
+  creatorId: number
+  participants: number[]
+  createdAt: string
 }

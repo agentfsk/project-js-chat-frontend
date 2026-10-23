@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { fetchData } from '../api/data'
 import { ApiError } from '../api/client'
@@ -32,13 +33,12 @@ import NotificationToast from '../components/NotificationToast'
 import { useToastStore } from '../store/toasts'
 import { isDirectChannel, isGroupChannel } from '../utils/channelKind'
 import type { CallMode, Message } from '../types'
-import { GroupCallScreen } from '../groupCall'
 import { GroupCallBanner } from '../components/GroupCallBanner'
-import { createGroupCallEngine, createGroupCallEngineConfig } from '../groupCall'
 
 const MOBILE_QUERY = '(max-width: 700px)'
 
 function ChatPage() {
+  const navigate = useNavigate()
   const channels = useChatStore((state) => state.channels)
   const currentChannelId = useChatStore((state) => state.currentChannelId)
   const error = useChatStore((state) => state.error)
@@ -73,6 +73,7 @@ function ChatPage() {
           data.requests,
           data.outgoingRequests,
         )
+        useGroupCallStore.getState().setActiveCalls(data.groupCalls ?? [])
       })
       .catch((caught: unknown) => {
         if (caught instanceof ApiError && caught.status === 401) {
@@ -141,9 +142,8 @@ function ChatPage() {
   const callPhase = useCallStore((state) => state.phase)
   const inCall = callPhase === 'calling' || callPhase === 'ringing' || callPhase === 'active'
 
-  const groupCallState = useGroupCallStore((state) => state.state)
-  const inGroupCall = groupCallState && (groupCallState.phase === 'joined' || groupCallState.phase === 'connecting')
-  const activeGroupCallChannelId = groupCallState?.channelId
+  const activeCalls = useGroupCallStore((state) => state.activeCalls)
+  const activeCall = activeChannel ? activeCalls.get(activeChannel.id) ?? null : null
 
   const handleStartCall = (mode: CallMode) => {
     if (activeChannel && peerProfile) {
@@ -151,25 +151,9 @@ function ChatPage() {
     }
   }
 
-const handleJoinGroupCall = async () => {
-    if (!activeChannel || !me || !groupCallState) return
-    try {
-      const config = createGroupCallEngineConfig({
-        callId: groupCallState.callId,
-        channelId: groupCallState.channelId,
-        mode: groupCallState.mode,
-        userId: String(me.id),
-        displayName: me.username,
-        avatarUrl: me.avatarUrl,
-        isCreator: groupCallState.creatorId === String(me.id),
-        rtpCapabilities: null,
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-        userIdString: String(me.id),
-      })
-      const engine = createGroupCallEngine(config)
-      await engine.join(config)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Не удалось присоединиться к звонку')
+  const handleJoinGroupCall = () => {
+    if (activeCall) {
+      navigate(`/group-call/${activeCall.callId}`)
     }
   }
 
@@ -258,9 +242,9 @@ const handleJoinGroupCall = async () => {
               {activeIsDirect && peerProfile && (
                 <CallButtons peer={peerProfile} disabled={inCall} onCall={handleStartCall} />
               )}
-              {activeIsGroup && activeChannel.id === activeGroupCallChannelId && groupCallState && (
+              {activeIsGroup && activeCall && (
                 <GroupCallBanner
-                  mode={groupCallState.mode}
+                  mode={activeCall.mode}
                   onJoin={handleJoinGroupCall}
                 />
               )}
@@ -274,9 +258,6 @@ const handleJoinGroupCall = async () => {
                 if (pinnedMessage) messageListRef.current?.scrollToMessage(pinnedMessage.id)
               }}
             />
-          )}
-          {inGroupCall && activeGroupCallChannelId === activeChannel?.id && (
-            <GroupCallScreen />
           )}
           <MessageList
             ref={messageListRef}

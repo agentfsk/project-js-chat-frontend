@@ -41,18 +41,26 @@ export interface GroupCallEngineEvents {
   onParticipantLeft: (userId: string) => void
   onParticipantUpdated: (participant: GroupCallParticipant) => void
   onLocalMediaStarted: (stream: MediaStream) => void
-  onLocalMediaStopped: (kind: 'audio' | 'video') => void
+  onLocalMediaStopped: (kind: 'audio' | 'video' | 'screen') => void
   onRemoteTrackReceived: (participantId: string, track: MediaStreamTrack, kind: 'audio' | 'video' | 'screen') => void
   onRemoteTrackRemoved: (participantId: string, kind: 'audio' | 'video' | 'screen') => void
   onError: (error: Error) => void
   onConnectionStateChange: (state: ConnectionState) => void
   onTransportConnect?: (params: { transportId: string; dtlsParameters: any }) => Promise<void>
   onProduce?: (params: { kind: 'audio' | 'video'; rtpParameters: any; appData: any }) => Promise<{ producerId: string }>
+  onConsume?: (params: { producerId: string; kind: 'audio' | 'video'; rtpCapabilities: any }) => Promise<{ consumerId: string; kind: 'audio' | 'video'; rtpParameters: any } | null>
   onPhaseChange?: (phase: GroupCallPhase) => void
   onMLSMessage?: (params: { callId: string; message: any }) => Promise<void>
 }
 
 export type ConnectionState = 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed'
+
+export interface MediaTransportParams {
+  id: string
+  iceParameters: any
+  iceCandidates: any[]
+  dtlsParameters: any
+}
 
 export interface GroupCallEngineConfig {
   callId: string
@@ -64,6 +72,8 @@ export interface GroupCallEngineConfig {
   isCreator: boolean
   rtpCapabilities: any
   iceServers: RTCIceServer[]
+  sendTransport?: MediaTransportParams | null
+  recvTransport?: MediaTransportParams | null
   appData: { userId: string; isScreenShare?: boolean; source?: string; keyId?: number }
   events: Partial<GroupCallEngineEvents>
 }

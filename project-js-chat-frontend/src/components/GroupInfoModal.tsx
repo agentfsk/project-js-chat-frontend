@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type TouchEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Modal from './Modal'
 import Avatar from './Avatar'
 import { useChatStore } from '../store/chat'
@@ -13,6 +14,7 @@ import {
 import { isGroupOwner, canActOnGroupMember } from '../utils/permissions'
 import type { UserProfile } from '../types'
 import type { GroupCallMode } from '../groupCall/types'
+import { createMediaCall } from '../groupCall/mediaServer'
 import CreateGroupModal from './CreateGroupModal'
 import InviteMembersModal from './InviteMembersModal'
 import ConfirmDialog from './ConfirmDialog'
@@ -29,6 +31,7 @@ type GroupInfoModalProps = {
 }
 
 function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
+  const navigate = useNavigate()
   const channel = useChatStore((state) => state.channels.find((c) => c.id === channelId) ?? null)
   const me = useUsersStore((state) => state.me)
   const token = useAuthStore((state) => state.token)
@@ -46,15 +49,22 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
     if (!channel || !me || !token) return
     setCreatingCall(mode)
     try {
+      const callId = `call-${channel.id}-${Date.now()}`
+      await createMediaCall({
+        callId,
+        channelId: channel.id,
+        mode,
+        userId: String(me.id),
+      })
       const res = await fetch('/api/v1/group-calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ channelId: channel.id, mode }),
+        body: JSON.stringify({ channelId: channel.id, mode, callId }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.message ?? 'Failed to create group call')
-      // Navigate to group call screen
-      window.location.href = `/group-call/${data.callId}`
+      if (!res.ok) throw new Error(data.error ?? data.message ?? 'Failed to create group call')
+      onClose()
+      navigate(`/group-call/${data.callId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось создать групповой звонок')
     } finally {

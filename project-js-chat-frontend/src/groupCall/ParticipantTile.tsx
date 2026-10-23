@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import type { GroupCallParticipant } from './types'
 
 interface ParticipantTileProps {
@@ -22,25 +22,20 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   speakerId,
   stream,
 }) => {
-  const [isSpeaking, setIsSpeaking] = useState(false)
+  const isSpeaking = participant.isSpeaking && !participant.isMuted
   const videoRef = useRef<HTMLVideoElement>(null)
-  const speakingAnimRef = useRef(0)
-
-  useEffect(() => {
-    if (participant.isSpeaking && !participant.isMuted) {
-      setIsSpeaking(true)
-      speakingAnimRef.current = 1
-    } else {
-      setIsSpeaking(false)
-      speakingAnimRef.current = 0
-    }
-  }, [participant.isSpeaking, participant.isMuted])
 
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream
     }
   }, [stream])
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isLocal || participant.isMuted
+    }
+  }, [isLocal, participant.isMuted, stream])
 
   const hasVideo = participant.isScreenSharing || participant.isCameraOn
 
@@ -52,16 +47,15 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
       } as React.CSSProperties}
       onClick={onClick}
     >
-      {hasVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={isLocal}
-          className="participant-video"
-          style={{ objectFit: 'cover' } as React.CSSProperties}
-        />
-      ) : (
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={isLocal}
+        className="participant-video"
+        style={{ objectFit: 'cover', display: hasVideo ? 'block' : 'none' } as React.CSSProperties}
+      />
+      {!hasVideo && (
         <div className="participant-avatar">
           {participant.avatarUrl ? (
             <img src={participant.avatarUrl} alt={participant.displayName} />

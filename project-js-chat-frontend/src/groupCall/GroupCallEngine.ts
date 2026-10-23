@@ -9,6 +9,7 @@ import type {
   ConnectionState,
   SFrameKey,
 } from '../groupCall/types'
+import { saveGroupCallState } from './persistence'
 
 declare global {
   interface Window {
@@ -190,6 +191,18 @@ export class GroupCallEngine {
     for (const producer of this.localProducers.values()) {
       producer.appData = { ...producer.appData, keyId: this.localKeyId }
     }
+
+    if (this.config) {
+      saveGroupCallState({
+        callId: this.config.callId,
+        channelId: this.config.channelId,
+        mode: this.config.mode,
+        groupId: this.mlsGroup.groupId,
+        epoch: this.mlsGroup.epoch,
+        localKeyId: this.localKeyId,
+        savedAt: new Date().toISOString(),
+      })
+    }
   }
 
   async processWelcome(welcomeEnvelope: any): Promise<void> {
@@ -277,11 +290,17 @@ export class GroupCallEngine {
 
   private async createSendTransport(iceServers: RTCIceServer[]): Promise<void> {
     if (!this.device) throw new Error('Device not initialized')
+    const params = this.config?.sendTransport
+    if (!params) throw new Error('Send transport parameters are missing')
 
     const transport = this.device.createSendTransport({
+      id: params.id,
+      iceParameters: params.iceParameters,
+      iceCandidates: params.iceCandidates,
+      dtlsParameters: params.dtlsParameters,
       iceServers,
       iceTransportPolicy: 'all',
-    } as any)
+    })
 
     transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
       try {
@@ -323,11 +342,17 @@ export class GroupCallEngine {
 
   private async createRecvTransport(iceServers: RTCIceServer[]): Promise<void> {
     if (!this.device) throw new Error('Device not initialized')
+    const params = this.config?.recvTransport
+    if (!params) throw new Error('Receive transport parameters are missing')
 
     const transport = this.device.createRecvTransport({
+      id: params.id,
+      iceParameters: params.iceParameters,
+      iceCandidates: params.iceCandidates,
+      dtlsParameters: params.dtlsParameters,
       iceServers,
       iceTransportPolicy: 'all',
-    } as any)
+    })
 
     transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
       try {
@@ -412,13 +437,24 @@ export class GroupCallEngine {
 
   async handleNewRemoteProducer(producerId: string, producerUserId: string, kind: 'audio' | 'video' | 'screen'): Promise<void> {
     if (!this.recvTransport || !this.device) return
+    if (!this.config?.events.onConsume) return
+    if (this.remoteConsumers.has(`${producerUserId}:${kind}`)) return
 
     try {
-      const consumer = await this.recvTransport.consume({
+      const consumerParams = await this.config.events.onConsume({
         producerId,
+        kind: kind === 'screen' ? 'video' : kind,
         rtpCapabilities: this.device.rtpCapabilities,
-        paused: false,
-      } as any)
+      })
+      if (!consumerParams) return
+
+      const consumer = await this.recvTransport.consume({
+        id: consumerParams.consumerId,
+        producerId,
+        kind: consumerParams.kind,
+        rtpParameters: consumerParams.rtpParameters,
+        appData: { userId: producerUserId, source: kind },
+      })
 
       this.remoteConsumers.set(`${producerUserId}:${kind}`, consumer)
 
@@ -440,6 +476,16 @@ export class GroupCallEngine {
       this.emitStateChange()
     } catch (error) {
       this.onError(error instanceof Error ? error : new Error('Failed to consume remote producer'))
+    }
+  }
+
+  async consumeExistingProducers(
+    producers: Array<{ producerId: string; producerUserId: string; kind: 'audio' | 'video'; appData?: Record<string, unknown> }>,
+  ): Promise<void> {
+    for (const producer of producers) {
+      const source = producer.appData?.source
+      const kind = source === 'screen' ? 'screen' : producer.kind
+      await this.handleNewRemoteProducer(producer.producerId, producer.producerUserId, kind)
     }
   }
 
@@ -615,6 +661,9 @@ const CreateGroupCallEngineConfigParams = {
   rtpCapabilities: null as any,
   iceServers: [] as RTCIceServer[],
   userIdString: '' as string,
+  sendTransport: null as GroupCallEngineConfig['sendTransport'],
+  recvTransport: null as GroupCallEngineConfig['recvTransport'],
+  events: {} as Partial<GroupCallEngineEvents>,
 } as const
 
 type CreateGroupCallEngineConfigParams = typeof CreateGroupCallEngineConfigParams
@@ -632,7 +681,9 @@ export function createGroupCallEngineConfig(params: CreateGroupCallEngineConfigP
     isCreator: params.isCreator,
     rtpCapabilities: params.rtpCapabilities,
     iceServers: params.iceServers,
+    sendTransport: params.sendTransport,
+    recvTransport: params.recvTransport,
     appData,
-    events: {},
+    events: params.events,
   } as GroupCallEngineConfig
 }

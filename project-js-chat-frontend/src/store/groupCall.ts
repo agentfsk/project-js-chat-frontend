@@ -1,18 +1,24 @@
 import { create } from 'zustand'
 import type { GroupCallState, GroupCallParticipant, GroupCallPhase } from '../groupCall/types'
+import type { ActiveGroupCall } from '../types'
 
 interface GroupCallStore {
   state: GroupCallState | null
+  activeCalls: Map<number, ActiveGroupCall>
   initialize: (initialState: Omit<GroupCallState, 'participants'> & { participants?: GroupCallParticipant[] }) => void
   reset: () => void
   setPhase: (phase: GroupCallPhase) => void
   addParticipant: (participant: GroupCallParticipant) => void
   removeParticipant: (userId: string) => void
   updateParticipant: (userId: string, updates: Partial<GroupCallParticipant>) => void
+  setActiveCalls: (calls: ActiveGroupCall[]) => void
+  upsertActiveCall: (call: ActiveGroupCall) => void
+  removeActiveCall: (callId: string) => void
 }
 
 export const useGroupCallStore = create<GroupCallStore>((set, get) => ({
   state: null,
+  activeCalls: new Map(),
 
   initialize: (initialState) => {
     const participants = new Map<string, GroupCallParticipant>()
@@ -23,7 +29,7 @@ export const useGroupCallStore = create<GroupCallStore>((set, get) => ({
     const state: GroupCallState = {
       ...initialState,
       participants,
-      localParticipant: participants.get(initialState.creatorId) || null,
+      localParticipant: initialState.localParticipant ?? null,
       sframeKeys: initialState.sframeKeys || new Map(),
       localKeyId: initialState.localKeyId ?? 0,
     }
@@ -92,5 +98,29 @@ export const useGroupCallStore = create<GroupCallStore>((set, get) => ({
     set({
       state: { ...state, participants, localParticipant },
     })
+  },
+
+  setActiveCalls: (calls: ActiveGroupCall[]) => {
+    const activeCalls = new Map<number, ActiveGroupCall>()
+    calls.forEach((call) => {
+      activeCalls.set(call.channelId, call)
+    })
+    set({ activeCalls })
+  },
+
+  upsertActiveCall: (call: ActiveGroupCall) => {
+    const activeCalls = new Map(get().activeCalls)
+    activeCalls.set(call.channelId, call)
+    set({ activeCalls })
+  },
+
+  removeActiveCall: (callId: string) => {
+    const activeCalls = new Map(get().activeCalls)
+    for (const [channelId, call] of activeCalls) {
+      if (call.callId === callId) {
+        activeCalls.delete(channelId)
+      }
+    }
+    set({ activeCalls })
   },
 }))

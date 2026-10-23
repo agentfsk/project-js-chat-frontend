@@ -30,3 +30,41 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Group calls (web)
+
+Group voice/video calls use an SFU media server (`project-js-media-server`)
+instead of a P2P mesh.
+
+```
+GroupInfoModal ──POST /api/v1/group-calls──▶ Chat backend (call registry, invites)
+      │                                              │
+      └─ createMediaCall (Socket.IO) ──▶ Media server (mediasoup router)
+                                                     │
+GroupCallScreen ── join/produce/consume ─────────────┘
+```
+
+- `src/groupCall/GroupCallEngine.ts` — mediasoup-client device, transports,
+  producers, consumers and SFrame key derivation.
+- `src/groupCall/mediaServer.ts` — Socket.IO client for the media server.
+- `src/groupCall/GroupCallScreen.tsx` — join flow, grid/speaker view,
+  microphone/camera/screen-share controls, participant management.
+- `src/groupCall/persistence.ts` — best-effort persistence of call metadata
+  (epoch, group id, key id). Raw media/MLS keys are never written to storage.
+- Active calls are included in `/api/v1/data` so the "join" banner appears as
+  soon as any group member starts a call.
+
+Environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_BACKEND_URL` | same origin | Chat backend URL |
+| `VITE_MEDIA_SERVER_URL` | `http://localhost:3001` | Media server URL |
+
+### MLS key management
+
+MLS group state is managed by `ping-openmls-sdk`. Identity keys and group state
+are stored in the browser's secure storage layer; the app-level persistence only
+keeps the group id, epoch and local key id so a reloaded call can be resumed.
+When a member joins or leaves, the MLS epoch advances and SFrame keys are
+re-derived from the new epoch secret. Keys are never sent to the SFU.

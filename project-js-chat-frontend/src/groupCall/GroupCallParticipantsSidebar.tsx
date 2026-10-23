@@ -7,6 +7,8 @@ interface GroupCallParticipantsSidebarProps {
   participants: GroupCallParticipant[]
   localUserId: string | undefined
   isCreator: boolean
+  onMute: (userId: string) => void
+  onKick: (userId: string) => void
 }
 
 interface ParticipantRowProps {
@@ -79,17 +81,9 @@ export const GroupCallParticipantsSidebar: React.FC<GroupCallParticipantsSidebar
   participants,
   localUserId,
   isCreator,
+  onMute,
+  onKick,
 }) => {
-  if (!isOpen) return null
-
-  const handleMuteParticipant = (userId: string) => {
-    console.log('Mute participant:', userId)
-  }
-
-  const handleKickParticipant = (userId: string) => {
-    console.log('Kick participant:', userId)
-  }
-
   const renderedParticipants = useMemo(
     () => participants.map(p => (
       <ParticipantRow
@@ -97,12 +91,14 @@ export const GroupCallParticipantsSidebar: React.FC<GroupCallParticipantsSidebar
         participant={p}
         isLocal={p.userId === localUserId}
         canManage={isCreator && p.userId !== localUserId}
-        onMute={handleMuteParticipant}
-        onKick={handleKickParticipant}
+        onMute={onMute}
+        onKick={onKick}
       />
     )),
-    [participants, localUserId, isCreator]
+    [participants, localUserId, isCreator, onMute, onKick]
   )
+
+  if (!isOpen) return null
 
   return (
     <div className="group-call-participants-sidebar" role="dialog" aria-label="Участники звонка">

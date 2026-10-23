@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import type { Channel, ContactRequest, Message, OutgoingContactRequest, ReadState, UserProfile } from '../types'
+import type { ActiveGroupCall, Channel, ContactRequest, Message, OutgoingContactRequest, ReadState, UserProfile } from '../types'
 
 export type DataResponse = {
   channels: Channel[]
@@ -10,6 +10,7 @@ export type DataResponse = {
   requests: ContactRequest[]
   outgoingRequests: OutgoingContactRequest[]
   readState?: ReadState
+  groupCalls?: ActiveGroupCall[]
 }
 
 export function fetchData(): Promise<DataResponse> {

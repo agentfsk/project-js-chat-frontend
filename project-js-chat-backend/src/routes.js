@@ -82,6 +82,20 @@ const userInGroupCall = (state, userId) => {
 
 const isGroupCallParticipant = (groupCall, userId) => Boolean(groupCall && groupCall.peers.has(userId));
 
+const endGroupCall = (state, app, groupCall) => {
+  state.groupCalls.delete(groupCall.callId);
+  const channel = state.channels.find((c) => c.id === groupCall.channelId);
+  if (channel) {
+    channel.participants.forEach((participantId) => {
+      app.io.to(`user:${participantId}`).emit('groupCallEnded', {
+        callId: groupCall.callId,
+        channelId: groupCall.channelId,
+        reason: 'all-left',
+      });
+    });
+  }
+};
+
 const getGroupCallPeerSocketId = (groupCall, userId) => {
   const peer = groupCall?.peers.get(userId);
   return peer?.socketId;
@@ -854,23 +868,24 @@ export default (app, defaultState = {}) => {
         acknowledge({ status: 'error', message: 'Только владелец или админ может начать групповой звонок' });
         return;
       }
-      if (findGroupCall(state, callId)) {
+
+      const caller = state.users.find((user) => user.id === socket.userId);
+      const finalCallId = callId || `call-${channel.id}-${Date.now()}`;
+      if (findGroupCall(state, finalCallId)) {
         acknowledge({ status: 'error', message: 'Звонок с таким ID уже существует' });
         return;
       }
-
-      const caller = state.users.find((user) => user.id === socket.userId);
-      state.groupCalls.set(callId, {
-        callId,
+      state.groupCalls.set(finalCallId, {
+        callId: finalCallId,
         channelId: channel.id,
         mode: mode === 'video' ? 'video' : 'audio',
         creatorId: socket.userId,
-        peers: new Map([[socket.userId, { socketId: socket.id, joinedAt: new Date() }]]),
+        peers: new Map([[socket.userId, { socketId: socket.id, joinedAt: new Date(), updates: {} }]]),
         createdAt: new Date(),
       });
 
       app.io.to(`user:${socket.userId}`).emit('groupCallCreated', {
-        callId,
+        callId: finalCallId,
         channelId: channel.id,
         mode: mode === 'video' ? 'video' : 'audio',
       });
@@ -879,7 +894,7 @@ export default (app, defaultState = {}) => {
       channel.participants.forEach((participantId) => {
         if (participantId !== socket.userId) {
           app.io.to(`user:${participantId}`).emit('groupCallInvite', {
-            callId,
+            callId: finalCallId,
             channelId: channel.id,
             mode: mode === 'video' ? 'video' : 'audio',
             creator: publicProfile(caller),
@@ -895,14 +910,15 @@ export default (app, defaultState = {}) => {
             const participantRoom = app.io.sockets.adapter.rooms.get(`user:${participantId}`);
             if (!participantRoom || participantRoom.size === 0) {
               sendGroupCallPush(participant.fcmToken, {
-                callId,
+                callId: finalCallId,
                 channelId: channel.id,
                 mode: mode === 'video' ? 'video' : 'audio',
                 creator: publicProfile(caller),
               });
             }
           }
-        });
+        }
+      });
 
       acknowledge({ status: 'ok' });
     });
@@ -915,23 +931,33 @@ export default (app, defaultState = {}) => {
         acknowledge({ status: 'error', message: 'Групповой звонок не найден' });
         return;
       }
-      if (!groupCall.peers.has(userId)) {
-        groupCall.peers.set(userId, { socketId: socket.id, joinedAt: new Date() });
+      const joinerId = Number(userId);
+      if (!groupCall.peers.has(joinerId)) {
+        groupCall.peers.set(joinerId, { socketId: socket.id, joinedAt: new Date(), updates: {} });
       } else {
-        groupCall.peers.get(userId).socketId = socket.id;
+        const peer = groupCall.peers.get(joinerId);
+        peer.socketId = socket.id;
+        if (!peer.updates) peer.updates = {};
       }
 
       // Notify other participants
       for (const [peerId, peer] of groupCall.peers) {
-        if (peerId !== userId) {
+        if (peerId !== joinerId) {
           app.io.to(`user:${peerId}`).emit('groupCallPeerJoined', {
             callId,
-            peer: publicProfile(state.users.find(u => u.id === userId)),
+            peer: publicProfile(state.users.find(u => u.id === joinerId)),
           });
         }
       }
 
-      acknowledge({ status: 'ok', peers: Array.from(groupCall.peers.keys()) });
+      const peers = Array.from(groupCall.peers.entries())
+        .filter(([peerId]) => peerId !== joinerId)
+        .map(([peerId, peer]) => ({
+          userId: peerId,
+          updates: peer.updates || {},
+        }));
+
+      acknowledge({ status: 'ok', peers: Array.from(groupCall.peers.keys()), profiles: peers });
     });
 
     socket.on('groupCallLeave', async ({
@@ -943,16 +969,84 @@ export default (app, defaultState = {}) => {
         return;
       }
 
-      groupCall.peers.delete(userId);
+      groupCall.peers.delete(Number(userId));
 
       // Notify other participants
       for (const [peerId, peer] of groupCall.peers) {
-        app.io.to(`user:${peerId}`).emit('groupCallPeerLeft', { callId, peerId: userId });
+        app.io.to(`user:${peerId}`).emit('groupCallPeerLeft', { callId, peerId: Number(userId) });
       }
 
       // If no participants left, clean up
       if (groupCall.peers.size === 0) {
-        state.groupCalls.delete(callId);
+        endGroupCall(state, app, groupCall);
+      }
+
+      acknowledge({ status: 'ok' });
+    });
+
+    socket.on('groupCallPeerUpdate', ({
+      callId, userId, updates,
+    }, acknowledge = _.noop) => {
+      const groupCall = findGroupCall(state, callId);
+      if (!groupCall || !groupCall.peers.has(Number(userId))) {
+        acknowledge({ status: 'error', message: 'Участник не найден в звонке' });
+        return;
+      }
+
+      const channel = state.channels.find((c) => c.id === groupCall.channelId);
+      const selfUpdate = Number(userId) === socket.userId;
+      const allowed = selfUpdate || isGroupOwnerOrAdmin(channel, socket.userId);
+      if (!allowed) {
+        acknowledge({ status: 'error', message: 'Недостаточно прав' });
+        return;
+      }
+
+      const peer = groupCall.peers.get(Number(userId));
+      peer.updates = { ...(peer.updates || {}), ...(updates || {}) };
+
+      for (const [peerId] of groupCall.peers) {
+        if (peerId !== socket.userId) {
+          app.io.to(`user:${peerId}`).emit('groupCallPeerUpdate', {
+            callId,
+            peerId: Number(userId),
+            updates,
+          });
+        }
+      }
+
+      acknowledge({ status: 'ok' });
+    });
+
+    socket.on('groupCallKick', ({
+      callId, targetUserId,
+    }, acknowledge = _.noop) => {
+      const groupCall = findGroupCall(state, callId);
+      if (!groupCall) {
+        acknowledge({ status: 'error', message: 'Групповой звонок не найден' });
+        return;
+      }
+      const channel = state.channels.find((c) => c.id === groupCall.channelId);
+      if (!isGroupOwnerOrAdmin(channel, socket.userId)) {
+        acknowledge({ status: 'error', message: 'Только владелец или админ может исключать из звонка' });
+        return;
+      }
+      const targetId = Number(targetUserId);
+      if (targetId === groupCall.creatorId) {
+        acknowledge({ status: 'error', message: 'Нельзя исключить создателя звонка' });
+        return;
+      }
+      if (!groupCall.peers.has(targetId)) {
+        acknowledge({ status: 'error', message: 'Участник не найден в звонке' });
+        return;
+      }
+
+      groupCall.peers.delete(targetId);
+      app.io.to(`user:${targetId}`).emit('groupCallKicked', { callId });
+      for (const [peerId] of groupCall.peers) {
+        app.io.to(`user:${peerId}`).emit('groupCallPeerLeft', { callId, peerId: targetId });
+      }
+      if (groupCall.peers.size === 0) {
+        endGroupCall(state, app, groupCall);
       }
 
       acknowledge({ status: 'ok' });
@@ -962,12 +1056,12 @@ export default (app, defaultState = {}) => {
       callId, targetUserId, signal,
     }, acknowledge = _.noop) => {
       const groupCall = findGroupCall(state, callId);
-      if (!groupCall || !groupCall.peers.has(targetUserId)) {
+      if (!groupCall || !groupCall.peers.has(Number(targetUserId))) {
         acknowledge({ status: 'error', message: 'Получатель не найден в звонке' });
         return;
       }
 
-      const targetPeer = groupCall.peers.get(targetUserId);
+      const targetPeer = groupCall.peers.get(Number(targetUserId));
       if (targetPeer?.socketId) {
         app.io.to(targetPeer.socketId).emit('groupCallSignal', {
           callId,
@@ -992,7 +1086,7 @@ export default (app, defaultState = {}) => {
           }
 
           if (groupCall.peers.size === 0) {
-            state.groupCalls.delete(callId);
+            endGroupCall(state, app, groupCall);
           }
         }
       }
@@ -1088,6 +1182,17 @@ export default (app, defaultState = {}) => {
       currentChannelId = channels[0].id;
     }
 
+    const groupCalls = Array.from(state.groupCalls?.values() || [])
+      .filter((call) => channelIds.has(call.channelId))
+      .map((call) => ({
+        callId: call.callId,
+        channelId: call.channelId,
+        mode: call.mode,
+        creatorId: call.creatorId,
+        participants: Array.from(call.peers.keys()),
+        createdAt: call.createdAt,
+      }));
+
     reply
       .header('Content-Type', 'application/json; charset=utf-8')
       .send({
@@ -1099,6 +1204,7 @@ export default (app, defaultState = {}) => {
         requests,
         outgoingRequests,
         readState: describeReadState(state, user.id),
+        groupCalls,
       });
   });
 
@@ -1460,13 +1566,41 @@ export default (app, defaultState = {}) => {
   });
 
   // Group call REST endpoints
+  app.get('/api/v1/group-calls', { preValidation: [app.authenticate] }, (req, reply) => {
+    const user = getCurrentUser(req, state);
+    if (!user) {
+      reply.send(new Unauthorized());
+      return;
+    }
+    if (!req.query.channelId) {
+      reply.code(400).send({ error: 'channelId is required' });
+      return;
+    }
+    const channel = state.channels.find((c) => c.id === Number(req.query.channelId));
+    if (!channel || !hasAccess(channel, user.id)) {
+      reply.code(403).send({ error: 'Access denied' });
+      return;
+    }
+    const calls = Array.from(state.groupCalls.values())
+      .filter((call) => call.channelId === channel.id)
+      .map((call) => ({
+        callId: call.callId,
+        channelId: call.channelId,
+        mode: call.mode,
+        creatorId: call.creatorId,
+        participants: Array.from(call.peers.keys()),
+        createdAt: call.createdAt,
+      }));
+    reply.send({ calls });
+  });
+
   app.post('/api/v1/group-calls', { preValidation: [app.authenticate] }, (req, reply) => {
     const user = getCurrentUser(req, state);
     if (!user) {
       reply.send(new Unauthorized());
       return;
     }
-    const { channelId, mode } = req.body || {};
+    const { channelId, mode, callId: requestedCallId } = req.body || {};
     if (!channelId || !mode) {
       reply.code(400).send({ error: 'channelId and mode are required' });
       return;
@@ -1481,7 +1615,7 @@ export default (app, defaultState = {}) => {
       return;
     }
 
-    const callId = `group-call-${Date.now()}-${user.id}`;
+    const callId = requestedCallId || `group-call-${Date.now()}-${user.id}`;
     const caller = state.users.find((u) => u.id === user.id);
     
     state.groupCalls.set(callId, {
@@ -1489,7 +1623,7 @@ export default (app, defaultState = {}) => {
       channelId: channel.id,
       mode: mode === 'video' ? 'video' : 'audio',
       creatorId: user.id,
-      peers: new Map([[user.id, { socketId: null, joinedAt: new Date() }]]),
+      peers: new Map([[user.id, { socketId: null, joinedAt: new Date(), updates: {} }]]),
       createdAt: new Date(),
     });
 
@@ -1552,7 +1686,7 @@ export default (app, defaultState = {}) => {
       return;
     }
     if (!groupCall.peers.has(user.id)) {
-      groupCall.peers.set(user.id, { socketId: null, joinedAt: new Date() });
+      groupCall.peers.set(user.id, { socketId: null, joinedAt: new Date(), updates: {} });
     }
     reply.send({ 
       callId: groupCall.callId,
@@ -1575,8 +1709,11 @@ export default (app, defaultState = {}) => {
       return;
     }
     groupCall.peers.delete(user.id);
+    for (const [peerId] of groupCall.peers) {
+      app.io.to(`user:${peerId}`).emit('groupCallPeerLeft', { callId, peerId: user.id });
+    }
     if (groupCall.peers.size === 0) {
-      state.groupCalls.delete(callId);
+      endGroupCall(state, app, groupCall);
     }
     reply.send({ ok: true });
   });

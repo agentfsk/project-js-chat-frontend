@@ -6,7 +6,8 @@ import { useUsersStore } from './store/users'
 import { useAuthStore } from './store/auth'
 import { attachmentKind, shouldAnnounce, toastPreview, useToastStore } from './store/toasts'
 import * as callManager from './callManager'
-import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, GroupCallPeer } from './types'
+import { useGroupCallStore } from './store/groupCall'
+import type { Attachment, CallMode, CallSignalData, Channel, Message, UserProfile, CallKeyPackage, GroupCallPeer, GroupCallPeerUpdatePayload, GroupCallPeerJoinedPayload, GroupCallPeerLeftPayload, GroupCallInvitePayload, GroupCallCreatedPayload, GroupCallEndedPayload, GroupCallKickedPayload } from './types'
 
 type AckPayload = { status: string; message?: string; data?: unknown }
 
@@ -99,29 +100,81 @@ export function connectSocket(): Socket | null {
   socket.on('callIncoming', (payload) => {
     callManager.onCallIncoming(payload)
   })
-  socket.on('groupCallCreated', () => {
-    // Handle group call created
+  socket.on('groupCallCreated', (payload: GroupCallCreatedPayload) => {
+    const me = useUsersStore.getState().me
+    useGroupCallStore.getState().upsertActiveCall({
+      callId: payload.callId,
+      channelId: payload.channelId,
+      mode: payload.mode,
+      creatorId: me?.id ?? 0,
+      participants: me ? [me.id] : [],
+      createdAt: new Date().toISOString(),
+    })
   })
-  socket.on('groupCallInvite', () => {
-    // Handle group call invite
+  socket.on('groupCallInvite', (payload: GroupCallInvitePayload) => {
+    useGroupCallStore.getState().upsertActiveCall({
+      callId: payload.callId,
+      channelId: payload.channelId,
+      mode: payload.mode,
+      creatorId: payload.creator.id,
+      participants: [payload.creator.id],
+      createdAt: new Date().toISOString(),
+    })
+    useToastStore.getState().push({
+      channelId: payload.channelId,
+      sender: payload.creator.username,
+      preview: `Приглашает в ${payload.mode === 'video' ? 'видеочат' : 'голосовой чат'}`,
+    })
   })
-  socket.on('groupCallPeerJoined', () => {
-    // Handle peer joined
+  socket.on('groupCallPeerJoined', (payload: GroupCallPeerJoinedPayload) => {
+    const peerId = String(payload.peer.id)
+    useGroupCallStore.getState().addParticipant({
+      userId: peerId,
+      displayName: payload.peer.username,
+      avatarUrl: payload.peer.avatarUrl,
+      role: 'participant',
+      isMuted: false,
+      isCameraOn: false,
+      isScreenSharing: false,
+      isSpeaking: false,
+      audioLevel: 0,
+      joinedAt: new Date(),
+    })
+    const state = useGroupCallStore.getState().state
+    if (state) {
+      useGroupCallStore.getState().upsertActiveCall({
+        callId: state.callId,
+        channelId: state.channelId,
+        mode: state.mode,
+        creatorId: Number(state.creatorId) || 0,
+        participants: Array.from(state.participants.keys()).map(Number),
+        createdAt: state.createdAt.toISOString(),
+      })
+    }
   })
-  socket.on('groupCallPeerLeft', () => {
-    // Handle peer left
+  socket.on('groupCallPeerLeft', (payload: GroupCallPeerLeftPayload) => {
+    useGroupCallStore.getState().removeParticipant(String(payload.peerId))
   })
-  socket.on('groupCallSignal', () => {
-    // Handle signaling
+  socket.on('groupCallPeerUpdate', (payload: GroupCallPeerUpdatePayload) => {
+    const updates = payload.updates ?? {}
+    useGroupCallStore.getState().updateParticipant(String(payload.peerId), {
+      ...(typeof updates.isMuted === 'boolean' ? { isMuted: updates.isMuted } : {}),
+      ...(typeof updates.isCameraOn === 'boolean' ? { isCameraOn: updates.isCameraOn } : {}),
+      ...(typeof updates.isScreenSharing === 'boolean' ? { isScreenSharing: updates.isScreenSharing } : {}),
+      ...(typeof updates.isSpeaking === 'boolean' ? { isSpeaking: updates.isSpeaking } : {}),
+      ...(typeof updates.audioLevel === 'number' ? { audioLevel: updates.audioLevel } : {}),
+    })
   })
-  socket.on('groupCallMLSMessage', () => {
-    // Handle MLS message
+  socket.on('groupCallEnded', (payload: GroupCallEndedPayload) => {
+    useGroupCallStore.getState().removeActiveCall(payload.callId)
+    const current = useGroupCallStore.getState().state
+    if (current?.callId === payload.callId) {
+      useGroupCallStore.getState().reset()
+    }
+    window.dispatchEvent(new CustomEvent('group-call-ended', { detail: payload }))
   })
-  socket.on('groupCallNewProducer', () => {
-    // Handle new producer
-  })
-  socket.on('groupCallPeerUpdate', () => {
-    // Handle peer update
+  socket.on('groupCallKicked', (payload: GroupCallKickedPayload) => {
+    window.dispatchEvent(new CustomEvent('group-call-kicked', { detail: payload }))
   })
   socket.on('callAnswered', (payload) => {
     callManager.onCallAnswered(payload)
@@ -354,8 +407,12 @@ export function emitGroupCallMLSMessage(payload: {
 
 export function emitGroupCallPeerUpdate(payload: {
   callId: string
-  peerId: string
+  userId: string
   updates: Partial<GroupCallPeer>
 }): Promise<void> {
   return emitWithAck<void>('groupCallPeerUpdate', payload)
+}
+
+export function emitGroupCallKick(callId: string, targetUserId: string): Promise<void> {
+  return emitWithAck<void>('groupCallKick', { callId, targetUserId })
 }

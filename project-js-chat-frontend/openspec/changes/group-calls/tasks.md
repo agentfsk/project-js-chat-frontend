@@ -45,7 +45,7 @@
 - [x] 3.5 Update `src/socket.ts`: add group call signaling events (groupCallJoin, groupCallProduce, etc.)
 - [x] 3.6 Update `src/types.ts`: add `GroupCallPeer`, `GroupCallState`, `MLSGroupState`, `GroupCallMode` types
 - [x] 3.7 Create `src/groupCallEngine.ts`: high-level API `joinGroupCall()`, `leaveGroupCall()`, `toggleMic()`, `toggleCam()`, `startScreenShare()`
-- [ ] 3.8 Add group call persistence: save/restore MLS group state, group call settings (verify: state survives app restart)
+- [x] 3.8 Add group call persistence: save/restore MLS group state, group call settings (verify: state survives app restart)
 - [ ] 3.9 Export from `src/index.ts`: `GroupCallEngine`, `useGroupCallStore`, `mls`, `groupCall` types
 - [x] 3.10 **Fix `createGroupCallEngineConfig` to include `appData` in `GroupCallEngineConfig`** (verify: config passes type check, appData included)
 
@@ -77,11 +77,11 @@
 - [x] 5.3 Implement participant tile: `<video>` element with `srcObject`, mute/cam indicators, name, speaking indicator via audio level (verify: tiles show video, indicators update)
 - [x] 5.3 Implement screen sharing: `getDisplayMedia()`, produce screen track, replace video track (verify: screen share works, others see shared screen)
 - [ ] 5.4 MLS integration for web: dynamic import `@openmls/rust` (WASM), process Welcome/Commit, derive SFrame keys (verify: E2EE works in browser)
-- [ ] 5.4 Update `src/socket.ts`: add group call signaling events for web
+- [x] 5.4 Update `src/socket.ts`: add group call signaling events for web
 - [x] 5.5 Update `src/pages/ChatPage.tsx` or group channel: add "Start voice chat" / "Start video chat" for owner/admin (verify: buttons visible for owner/admin)
 - [x] 5.5 Add "Join voice/video chat" banner when group call active (verify: banner appears, join navigates to GroupCallScreen)
 - [x] 5.6 Create `GroupCallScreen.tsx` route in `App.tsx` (verify: navigation works)
-- [ ] 5.6 Implement participant list sidebar/modal: list participants, mute/cam status, owner actions (verify: sidebar opens, actions work)
+- [x] 5.6 Implement participant list sidebar/modal: list participants, mute/cam status, owner actions (verify: sidebar opens, actions work)
 - [x] 5.7 **Fix `handleJoinGroupCall` in `ChatPage.tsx` to include `appData` in `GroupCallEngineConfig`** (verify: config passes type check, appData included)
 
 ## 6. E2EE: MLS Integration
@@ -113,14 +113,14 @@
 - [ ] 8.1 Deploy media server to Oracle Cloud: docker-compose, systemd service, log rotation (verify: server runs, auto-restarts)
 - [ ] 8.2 Deploy backend with group call endpoints (verify: endpoints respond, FCM works)
 - [ ] 8.2 Build mobile: `eas build -p android --profile preview` (verify: APK installs, group calls work)
-- [ ] 8.3 Build web: `pnpm build` (verify: dist builds, group call screen loads)
+- [x] 8.3 Build web: `pnpm build` (verify: dist builds, group call screen loads)
 - [ ] 8.3 Feature flag `group_calls_enabled` rollout: 10% → 50% → 100% (verify: rollout works, no regressions)
 - [ ] 8.4 Full regression: messaging, 1:1 calls, groups, group calls, push, E2EE (verify: all features work)
 
 ## 9. Documentation & Polish
 
-- [ ] 9.1 Update README with group call architecture diagram
-- [ ] 9.1 Document media server deployment (Oracle Cloud, Docker, firewall)
-- [ ] 9.2 Document MLS key management (backup, rotation, recovery)
+- [x] 9.1 Update README with group call architecture diagram
+- [x] 9.1 Document media server deployment (Oracle Cloud, Docker, firewall)
+- [x] 9.2 Document MLS key management (backup, rotation, recovery)
 - [ ] 9.2 Add group call UI strings to localization files
 - [ ] 9.3 Performance tuning: mediasoup worker settings, consumer pause/resume, simulcast layers
