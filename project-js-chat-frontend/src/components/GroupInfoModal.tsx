@@ -11,7 +11,7 @@ import {
   emitSetGroupAdmin,
   emitUnmuteGroupMember,
 } from '../socket'
-import { isGroupOwner, canActOnGroupMember } from '../utils/permissions'
+import { isGroupOwner, canActOnGroupMember, canModerateGroup } from '../utils/permissions'
 import type { UserProfile } from '../types'
 import type { GroupCallMode } from '../groupCall/types'
 import { createMediaCall } from '../groupCall/mediaServer'
@@ -82,6 +82,7 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
   if (!channel || !me) return null
 
   const owner = isGroupOwner(channel, me)
+  const canStartCall = canModerateGroup(channel, me)
   const members = channel.members ?? []
   const isMuted = (id: number) => channel.muted?.some((m) => m.userId === id) ?? false
 
@@ -165,33 +166,43 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
           })}
         </ul>
       </div>
-      {owner && (
+      {(owner || canStartCall) && (
         <div className="profile-actions">
-          <button type="button" onClick={() => setInviting(true)}>
-            Пригласить друзей
-          </button>
-          <button type="button" onClick={() => setEditing(true)}>
-            Изменить группу
-          </button>
-          <button
-            type="button"
-            className="group-call-btn"
-            onClick={() => startGroupCall('audio')}
-            disabled={creatingCall !== null}
-          >
-            {creatingCall === 'audio' ? 'Создание...' : 'Голосовой чат'}
-          </button>
-          <button
-            type="button"
-            className="group-call-btn"
-            onClick={() => startGroupCall('video')}
-            disabled={creatingCall !== null}
-          >
-            {creatingCall === 'video' ? 'Создание...' : 'Видеочат'}
-          </button>
-          <button type="button" className="danger-btn" onClick={() => setDeleteStage('confirm')}>
-            Удалить группу
-          </button>
+          {owner && (
+            <button type="button" onClick={() => setInviting(true)}>
+              Пригласить друзей
+            </button>
+          )}
+          {owner && (
+            <button type="button" onClick={() => setEditing(true)}>
+              Изменить группу
+            </button>
+          )}
+          {canStartCall && (
+            <button
+              type="button"
+              className="group-call-btn"
+              onClick={() => startGroupCall('audio')}
+              disabled={creatingCall !== null}
+            >
+              {creatingCall === 'audio' ? 'Создание...' : 'Голосовой чат'}
+            </button>
+          )}
+          {canStartCall && (
+            <button
+              type="button"
+              className="group-call-btn"
+              onClick={() => startGroupCall('video')}
+              disabled={creatingCall !== null}
+            >
+              {creatingCall === 'video' ? 'Создание...' : 'Видеочат'}
+            </button>
+          )}
+          {owner && (
+            <button type="button" className="danger-btn" onClick={() => setDeleteStage('confirm')}>
+              Удалить группу
+            </button>
+          )}
         </div>
       )}
 
