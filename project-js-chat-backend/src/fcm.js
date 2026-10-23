@@ -34,7 +34,7 @@ export async function sendCallPush(fcmToken, callData) {
   }
   
   try {
-    const data: any = {
+    const data = {
       type: 'callIncoming',
       callId: callData.callId,
       channelId: String(callData.channelId),
@@ -115,7 +115,7 @@ export async function sendGroupCallPush(fcmToken, callData) {
   }
   
   try {
-    const data: any = {
+    const data = {
       type: 'groupCallInvite',
       callId: callData.callId,
       channelId: String(callData.channelId),
