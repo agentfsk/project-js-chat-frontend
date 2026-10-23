@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "cd project-js-chat-frontend && npm ci --include=dev --no-audit --no-fund",
+  "buildCommand": "cd project-js-chat-frontend && npm run build",
+  "outputDirectory": "project-js-chat-frontend/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
