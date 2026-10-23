@@ -44,6 +44,8 @@ export const GroupCallScreen: React.FC = () => {
 
   const participants = useMemo(() => state ? Array.from(state.participants.values()) : [], [state])
   const phase = state?.phase || 'idle'
+  const canShareScreen = typeof navigator !== 'undefined'
+    && Boolean(navigator.mediaDevices?.getDisplayMedia)
 
   const activeSpeaker = participants.find(p => p.isSpeaking && !p.isMuted)
 
@@ -200,6 +202,18 @@ export const GroupCallScreen: React.FC = () => {
         })
         if (disposed) return
 
+        const initialUpdates = {
+          isMuted: engine.isMicMuted(),
+          isCameraOn: engine.isCameraOn(),
+          isScreenSharing: false,
+        }
+        updateParticipant(localUserId, initialUpdates)
+        emitGroupCallPeerUpdate({
+          callId,
+          userId: localUserId,
+          updates: initialUpdates,
+        }).catch(() => undefined)
+
         useGroupCallStore.getState().setPhase('joined')
         setJoining(false)
       } catch (err) {
@@ -284,7 +298,7 @@ export const GroupCallScreen: React.FC = () => {
       const cameraOn = await engine.toggleCam()
       publishUpdate({ isCameraOn: cameraOn })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось включить камеру')
+      console.error('Не удалось переключить камеру', err)
     }
   }
 
@@ -294,8 +308,8 @@ export const GroupCallScreen: React.FC = () => {
     try {
       const sharing = await engine.toggleScreenShare()
       publishUpdate({ isScreenSharing: sharing })
-    } catch {
-      // The user dismissed the screen picker or sharing failed.
+    } catch (err) {
+      console.error('Не удалось переключить демонстрацию экрана', err)
     }
   }
 
@@ -409,6 +423,8 @@ export const GroupCallScreen: React.FC = () => {
             className={`control-btn ${state?.participants.get(localUserId)?.isScreenSharing ? 'active' : ''}`}
             onClick={toggleScreenShare}
             aria-label="Демонстрация экрана"
+            title={canShareScreen ? 'Демонстрация экрана' : 'Браузер не поддерживает демонстрацию экрана'}
+            disabled={!canShareScreen}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />

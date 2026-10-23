@@ -139,6 +139,9 @@ export class MeshGroupCallEngine {
 
   async startScreenShare(): Promise<void> {
     if (this.screenTrack) return
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      throw new Error('Демонстрация экрана не поддерживается браузером')
+    }
     const display = await navigator.mediaDevices.getDisplayMedia({ video: true })
     const track = display.getVideoTracks()[0]
     if (!track) throw new Error('Не удалось начать демонстрацию экрана')
