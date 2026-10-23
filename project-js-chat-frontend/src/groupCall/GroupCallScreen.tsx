@@ -20,6 +20,7 @@ import {
 } from './mediaServer'
 import type { GroupCallKickedPayload } from '../types'
 import { loadGroupCallState, saveGroupCallState } from './persistence'
+import { apiRequest } from '../api/client'
 
 type CallInfo = {
   callId: string
@@ -89,11 +90,7 @@ export const GroupCallScreen: React.FC = () => {
       setJoining(true)
       setError(null)
       try {
-        const response = await fetch(`/api/v1/group-calls/${callId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!response.ok) throw new Error('Групповой звонок не найден')
-        const info = await response.json() as CallInfo
+        const info = await apiRequest<CallInfo>(`/api/v1/group-calls/${callId}`)
         if (disposed) return
         setCallInfo(info)
 

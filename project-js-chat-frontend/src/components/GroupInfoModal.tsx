@@ -20,7 +20,7 @@ import InviteMembersModal from './InviteMembersModal'
 import ConfirmDialog from './ConfirmDialog'
 import TypeYesDeleteDialog from './TypeYesDeleteDialog'
 import GroupMemberMenu from './GroupMemberMenu'
-import { useAuthStore } from '../store/auth'
+import { apiRequest } from '../api/client'
 
 const LONG_PRESS_MS = 500
 const LONG_PRESS_MOVE_TOLERANCE = 10
@@ -34,7 +34,6 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
   const navigate = useNavigate()
   const channel = useChatStore((state) => state.channels.find((c) => c.id === channelId) ?? null)
   const me = useUsersStore((state) => state.me)
-  const token = useAuthStore((state) => state.token)
   const setError = useChatStore((state) => state.setError)
   const [menu, setMenu] = useState<{ member: UserProfile; x: number; y: number } | null>(null)
   const [inviting, setInviting] = useState(false)
@@ -46,7 +45,7 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
   const longPressStart = useRef<{ x: number; y: number; moved: boolean } | null>(null)
 
   const startGroupCall = async (mode: GroupCallMode) => {
-    if (!channel || !me || !token) return
+    if (!channel || !me) return
     setCreatingCall(mode)
     try {
       const callId = `call-${channel.id}-${Date.now()}`
@@ -56,13 +55,10 @@ function GroupInfoModal({ channelId, onClose }: GroupInfoModalProps) {
         mode,
         userId: String(me.id),
       })
-      const res = await fetch('/api/v1/group-calls', {
+      const data = await apiRequest<{ callId: string }>('/api/v1/group-calls', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ channelId: channel.id, mode, callId }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? data.message ?? 'Failed to create group call')
       onClose()
       navigate(`/group-call/${data.callId}`)
     } catch (err) {
